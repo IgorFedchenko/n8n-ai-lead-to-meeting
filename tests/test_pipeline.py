@@ -28,7 +28,7 @@ def pipeline(client, payload=None):
     return response.json()
 
 
-def test_end_to_end_with_replay_booking_and_email(clients):
+def test_service_flow_with_replay_booking_and_email(clients):
     client, remote = clients
     first = pipeline(client)
     assert first["status"] == "offered"

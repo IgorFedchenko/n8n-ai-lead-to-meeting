@@ -20,7 +20,14 @@ if endpoint:
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
     parsed = urlparse(endpoint)
-    if parsed.hostname not in {"localhost", "127.0.0.1", "phoenix"} or parsed.username or parsed.query:
+    if (
+        parsed.scheme not in {"http", "https"}
+        or parsed.hostname not in {"localhost", "127.0.0.1", "phoenix"}
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
         raise RuntimeError("Telemetry exporter must be a local endpoint without credentials/query")
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
 tracer = provider.get_tracer("lead-to-meeting", "1")

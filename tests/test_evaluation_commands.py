@@ -147,3 +147,59 @@ def test_dependency_audit_findings_and_tool_errors_fail(monkeypatch, tmp_path, e
     assert stopped.value.code != 0
     assert len(commands) == 2
     assert {command[command.index("-r") + 1] for command in commands} == set(audit_dependencies.LOCKS)
+
+
+@pytest.mark.parametrize("provider", ["anthropic", "openai-compatible"])
+@pytest.mark.parametrize("purpose", ["generation", "judge"])
+def test_optional_commands_enforce_configured_output_cap_on_physical_wire(
+    cli, monkeypatch, provider, purpose
+):
+    directory, calls, _, arguments = cli
+    monkeypatch.setenv("LLM_MAX_OUTPUT_TOKENS", "137")
+    monkeypatch.setenv("LLM_BASE_URL", "https://synthetic.invalid/v1")
+    source = directory / "wire-input.json"
+    if purpose == "generation":
+        source.write_text(json.dumps(json.loads(Path("evals/cases.json").read_text())[:1]))
+        raw = json.dumps(QUALIFICATION)
+        command, input_flag = live.main, "--dataset"
+    else:
+        source.write_text(
+            json.dumps(
+                {
+                    "results": [
+                        {"id": "E01", "inquiry": "Synthetic n8n inquiry", "qualification": QUALIFICATION}
+                    ]
+                }
+            )
+        )
+        raw = json.dumps(
+            {
+                "relevance": 2,
+                "grounding": 2,
+                "calibration": 2,
+                "evidence": "Synthetic inquiry evidence",
+                "invented_budget_or_identity": False,
+            }
+        )
+        command, input_flag = judge.main, "--results"
+
+    def transport(request):
+        calls.append(request)
+        envelope = (
+            {"content": [{"type": "text", "text": raw}]}
+            if provider == "anthropic"
+            else {"choices": [{"message": {"content": raw}}]}
+        )
+        return httpx.Response(200, json=envelope)
+
+    monkeypatch.setattr(Providers, "client", httpx.Client(transport=httpx.MockTransport(transport)))
+    args = arguments()
+    args[args.index("--provider") + 1] = provider
+    with pytest.raises(SystemExit) as stopped:
+        command(args + [input_flag, str(source)])
+    assert stopped.value.code == 0
+    assert len(calls) == 1
+    sent = json.loads(calls[0].content)
+    assert sent["max_tokens"] == 137
+    assert sent["model"] == "synthetic"
+    assert "tools" not in sent

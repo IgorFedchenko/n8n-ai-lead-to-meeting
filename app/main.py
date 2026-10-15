@@ -313,7 +313,7 @@ def book(body: Booking):
         if (data["status"] != "offered" and not retrying_booking) or body.slot not in data.get("slots", []):
             raise HTTPException(409, "Slot was not offered")
         if parse_time(body.slot) <= datetime.now(UTC) or (
-            datetime.now(UTC) - parse_time(data["offered_at"]) > timedelta(days=7)
+            datetime.now(UTC) - parse_time(data["offered_at"]) >= timedelta(days=7)
         ):
             raise HTTPException(410, "Offer expired")
         # A deterministic remote ID and the transaction lock protect concurrent/redelivered bookings.
@@ -456,7 +456,9 @@ def public_offer(run_id: str, x_booking_token: str = Header(default="")):
         data = run.data
         if not hmac.compare_digest(data["booking_token"], x_booking_token):
             raise HTTPException(403, "Invalid booking token")
-        if "offered_at" not in data or datetime.now(UTC) - parse_time(data["offered_at"]) > timedelta(days=7):
+        if "offered_at" not in data or datetime.now(UTC) - parse_time(data["offered_at"]) >= timedelta(
+            days=7
+        ):
             raise HTTPException(410, "Offer unavailable or expired")
         return {
             "status": data["status"],

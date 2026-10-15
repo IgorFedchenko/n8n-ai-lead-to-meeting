@@ -11,6 +11,9 @@ attempt ledger before making any operator decision. Each physical request consum
 reservation; a missing outcome is ambiguous and remains charged. Never delete/reset budgets to retry
 an unresolved request. The read-only private state endpoint shows per-attempt accounting.
 
+Booking offers expire at exactly seven days after issuance (UTC, including the expiry instant);
+timezone offsets are normalized before comparison.
+
 Mail stores a reservation ID and expiry before SMTP. Active duplicate callers neither send nor
 mark uncertainty. Expiry/failure transitions to uncertain/manual review, without automatic resend.
 The monitor also expires old mail reservations. Late successes/failures append event evidence and

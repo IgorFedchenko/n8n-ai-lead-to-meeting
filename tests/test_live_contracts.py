@@ -29,6 +29,7 @@ def test_mock_ignores_empty_live_credential_but_live_rejects_it(monkeypatch):
 def test_anthropic_live_contract_without_network(monkeypatch, respx_mock):
     monkeypatch.setenv("INTEGRATION_MODE", "live")
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("LLM_MAX_OUTPUT_TOKENS", "137")
     monkeypatch.setenv("LLM_MODEL", "operator-selected-model")
     monkeypatch.setenv("LLM_API_KEY", "synthetic-test-value")
     route = respx_mock.post("https://api.anthropic.com/v1/messages").mock(
@@ -45,6 +46,7 @@ def test_anthropic_live_contract_without_network(monkeypatch, respx_mock):
         request = json.loads(route.calls[0].request.content)
         assert request["output_config"]["format"]["type"] == "json_schema"
         assert request["model"] == "operator-selected-model"
+        assert request["max_tokens"] == 137
         assert '"scenario"' not in request["messages"][0]["content"]
         assert request["output_config"]["format"]["schema"]["additionalProperties"] is False
         assert "minimum" not in json.dumps(request["output_config"]["format"]["schema"])
@@ -55,6 +57,7 @@ def test_anthropic_live_contract_without_network(monkeypatch, respx_mock):
 def test_openai_compatible_provider_contract(monkeypatch, respx_mock):
     monkeypatch.setenv("INTEGRATION_MODE", "live")
     monkeypatch.setenv("LLM_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("LLM_MAX_OUTPUT_TOKENS", "137")
     monkeypatch.setenv("LLM_MODEL", "operator-selected-model")
     monkeypatch.setenv("LLM_BASE_URL", "https://provider.invalid/v1")
     monkeypatch.setenv("LLM_API_KEY", "synthetic-test-value")
@@ -66,6 +69,7 @@ def test_openai_compatible_provider_contract(monkeypatch, respx_mock):
         assert adapter.qualify({"message": "Synthetic lead"}) == "{}"
         sent = json.loads(route.calls[0].request.content)
         assert sent["response_format"]["json_schema"]["strict"] is True
+        assert sent["max_tokens"] == 137
         assert (
             sent["response_format"]["json_schema"]["schema"]["required"]
             == (Qualification.model_json_schema()["required"])

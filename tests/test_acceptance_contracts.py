@@ -494,3 +494,97 @@ def test_retry_after_is_bounded_and_invalid_value_falls_back(
     finally:
         adapter.client.close()
     assert waits == ([1, 2] if expected_wait is None else [expected_wait, expected_wait])
+
+
+@pytest.mark.parametrize("elapsed_delta,expected", [(-1, 200), (0, 410), (1, 410)])
+def test_offer_expiry_exact_boundary_with_timezone_offset(clients, monkeypatch, elapsed_delta, expected):
+    from datetime import timezone
+
+    client, remote = clients
+    run = pipeline(client)
+    fixed = datetime.now(UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.astimezone(tz)
+
+    monkeypatch.setattr(main, "datetime", Clock)
+    with db.transaction() as session:
+        row = db.get_run(session, run["run_id"])
+        offered = (fixed - timedelta(days=7, seconds=elapsed_delta)).astimezone(timezone(timedelta(hours=4)))
+        db.save(session, row, {**row.data, "offered_at": offered.isoformat()}, "boundary")
+    response = client.get(
+        "/public/offer", params={"run_id": run["run_id"]}, headers={"X-Booking-Token": run["booking_token"]}
+    )
+    assert response.status_code == expected
+    response = client.post(
+        "/api/book", json={"run_id": run["run_id"], "token": run["booking_token"], "slot": run["slots"][0]}
+    )
+    assert response.status_code == expected
+    assert len(remote.get("/state").json()["events"]) == int(expected == 200)
+
+
+@pytest.mark.parametrize("remaining,expected", [(1, "sending"), (0, "uncertain"), (-1, "uncertain")])
+def test_mail_reservation_expiry_exact_boundary_never_resends(clients, monkeypatch, remaining, expected):
+    client, remote = clients
+    run = pipeline(client)
+    fixed = datetime.now(UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed.astimezone(tz)
+
+    monkeypatch.setattr(main, "datetime", Clock)
+    with db.transaction() as session:
+        row = db.get_run(session, run["run_id"])
+        db.save(
+            session,
+            row,
+            {
+                **row.data,
+                "offer_mail": "sending",
+                "status": "slots_ready",
+                "offer_reservation": {
+                    "id": "synthetic-owner",
+                    "expires_at": (fixed + timedelta(seconds=remaining)).isoformat(),
+                },
+            },
+            "boundary",
+        )
+    before = len(remote.get("/state").json()["mail"])
+    result = main.send_email(run["run_id"], "offer")
+    assert result["offer_mail"] == expected
+    assert len(remote.get("/state").json()["mail"]) == before
+    if remaining > 0:
+        assert result["operation_status"] == "in_progress"
+    else:
+        assert result["status"] == "manual_review"
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://external.invalid/v1/traces",
+        "http://identity@localhost/v1/traces",
+        "http://:PRIVATE_ENDPOINT_SENTINEL@localhost/v1/traces",
+        "http://localhost/v1/traces?token=PRIVATE_ENDPOINT_SENTINEL",
+        "http://localhost/v1/traces#token=PRIVATE_ENDPOINT_SENTINEL",
+        "file://localhost/v1/traces",
+    ],
+)
+def test_exporter_rejects_remote_userinfo_token_urls_and_non_http_before_io(endpoint):
+    import os
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.telemetry"],
+        env={**os.environ, "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": endpoint},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "Telemetry exporter must be a local endpoint" in result.stderr
+    assert "PRIVATE_ENDPOINT_SENTINEL" not in result.stdout + result.stderr

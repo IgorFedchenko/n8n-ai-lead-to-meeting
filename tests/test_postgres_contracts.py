@@ -8,6 +8,8 @@ import multiprocessing
 import os
 import smtplib
 import socketserver
+import subprocess
+import sys
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -16,6 +18,7 @@ from threading import Event
 
 import pytest
 from sqlalchemy import create_engine, select, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app import db, llm_budget, main
@@ -254,13 +257,36 @@ def test_smtp_physical_send_owner_cas_across_processes(postgres, monkeypatch, la
                                 run,
                                 {
                                     **run.data,
-                                    "offer_mail": "sent" if resolution == "delivered" else "uncertain",
+                                    "offer_mail": "uncertain",
                                     "status": "booked",
+                                    "done": [*run.data["done"], "book"],
                                     "booked_slot": "preserve-later-booking",
                                     "offer_reservation": {"id": "operator-reconciled"},
                                 },
                                 "reconciled",
                             )
+                        if resolution == "delivered":
+                            database_url = (
+                                make_url(postgres[0])
+                                .update_query_dict({"options": "-csearch_path=" + postgres[1]})
+                                .render_as_string(hide_password=False)
+                            )
+                            reconciled = subprocess.run(
+                                [
+                                    sys.executable,
+                                    "-m",
+                                    "scripts.reconcile_mail",
+                                    run_id,
+                                    "offer",
+                                    "--verified-delivered",
+                                ],
+                                env={**os.environ, "DATABASE_URL": database_url},
+                                capture_output=True,
+                                text=True,
+                                timeout=10,
+                            )
+                            assert reconciled.returncode == 0
+                            assert "no send performed" in reconciled.stdout
             finally:
                 release.set()
             outcome = results.get(timeout=15)
