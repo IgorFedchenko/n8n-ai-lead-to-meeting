@@ -475,3 +475,22 @@ def test_hard_bounds_fail_before_physical_io(clients, monkeypatch, name, value):
     assert result["status"] == "manual_review"
     assert result["llm_usage"]["physical_attempts"] == 0
     assert remote.get("/state").json()["llm"] == []
+
+
+@pytest.mark.parametrize("retry_after,expected_wait", [("999", 10), ("-5", 0), ("invalid", None)])
+def test_retry_after_is_bounded_and_invalid_value_falls_back(
+    monkeypatch, respx_mock, retry_after, expected_wait
+):
+    from app.providers import Providers, Retryable
+
+    waits = []
+    monkeypatch.setenv("RETRY_DELAY_SCALE", "1")
+    monkeypatch.setattr("app.providers.time.sleep", waits.append)
+    respx_mock.get("https://synthetic.invalid/backoff").respond(429, headers={"Retry-After": retry_after})
+    adapter = Providers()
+    try:
+        with pytest.raises(Retryable):
+            adapter.request("GET", "https://synthetic.invalid/backoff")
+    finally:
+        adapter.client.close()
+    assert waits == ([1, 2] if expected_wait is None else [expected_wait, expected_wait])

@@ -98,20 +98,66 @@ def main():
             env["WEBHOOK_TOKEN"],
         ]
         serialized = json.dumps(spans)
+        # n8n temporarily persists in-flight work for crash recovery. Require its lifecycle
+        # to finish and remove ALL retained copies, including soft-deleted rows; no row exclusions.
+        for drain_attempt in range(30):
+            lifecycle_drains = drain_attempt + 1
+            stored = compose(
+                "exec",
+                "-T",
+                "postgres",
+                "psql",
+                "-U",
+                "demo",
+                "-d",
+                "n8n",
+                "-At",
+                "-c",
+                "SELECT data FROM execution_data",
+            ).stdout
+            remaining = int(
+                compose(
+                    "exec",
+                    "-T",
+                    "postgres",
+                    "psql",
+                    "-U",
+                    "demo",
+                    "-d",
+                    "n8n",
+                    "-At",
+                    "-c",
+                    "SELECT count(*) FROM execution_entity",
+                ).stdout.strip()
+            )
+            if remaining == 0 and all(private not in stored for private in private_values):
+                break
+            time.sleep(1)
+        else:
+            labels = ["inquiry", "contact", "booking token", "service credential", "webhook credential"]
+            categories = [
+                label for label, value in zip(labels, private_values, strict=True) if value in stored
+            ]
+            metadata = compose(
+                "exec",
+                "-T",
+                "postgres",
+                "psql",
+                "-U",
+                "demo",
+                "-d",
+                "n8n",
+                "-At",
+                "-c",
+                "SELECT status, mode, count(*) FROM execution_entity GROUP BY status, mode",
+            ).stdout
+            raise AssertionError(
+                "Retained n8n private categories: " + repr(categories) + "; status counts: " + metadata
+            )
         logs = compose("logs", "--no-color", "app", "mock", "n8n", "bootstrap").stdout
-        stored = compose(
-            "exec",
-            "-T",
-            "postgres",
-            "psql",
-            "-U",
-            "demo",
-            "-d",
-            "n8n",
-            "-At",
-            "-c",
-            "SELECT data FROM execution_data",
-        ).stdout
+        final_spans = phoenix.get("/v1/projects/default/spans", params={"limit": 1000})
+        final_spans.raise_for_status()
+        serialized = json.dumps(final_spans.json()["data"])
         state = call(APP, "/api/state")
         for private in private_values:
             assert private not in serialized, "Private value in exported spans"
@@ -120,12 +166,15 @@ def main():
             assert private not in json.dumps(state["alerts"]), "Private value in alert outbox"
         report = dict(
             status="PASS",
+            git_sha=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
             boundary="actual n8n → application OTLP HTTP exporter → local Phoenix",
             exporter_endpoint=endpoint,
             synthetic=True,
             run_id=run["run_id"],
             trace_id=trace_id,
             span_count=len(correlated),
+            lifecycle_drain_attempts=lifecycle_drains,
+            retained_n8n_execution_rows=remaining,
             spans=[
                 dict(name=s["name"], span_id=s["context"]["span_id"], parent_id=s["parent_id"])
                 for s in correlated

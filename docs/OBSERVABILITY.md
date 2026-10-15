@@ -5,6 +5,10 @@ stages, status, provider/model, prompt version/hash, token counts, configured re
 Structured events use the same allowlist. Exception messages/tracebacks are not recorded on spans.
 No automatic HTTP instrumentation captures paths or query strings; prompts, completions, inquiry
 text, email/phone, credentials, authorization headers and booking tokens are never attributes.
+Schema-validation responses omit rejected input, and third-party HTTP URL logging is disabled.
+n8n saves neither successful nor failed payloads; pruning is disabled so its `save=none` lifecycle
+hard-deletes completed execution data immediately instead of retaining soft-deleted copies until
+a pruning cycle. In-flight n8n payloads are temporary private operational data during execution.
 `traceparent` propagates from application spans to LLM requests; baggage is not forwarded.
 
 By default the SDK has no network exporter. Tests can attach an in-memory span exporter. To inspect

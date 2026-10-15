@@ -299,6 +299,9 @@ def qualification_worker(url, schema, run_id, port, results):
         RETRY_DELAY_SCALE="0",
     )
     main.providers = Providers()
+    import httpx
+
+    main.providers.client = httpx.Client(timeout=1)
     try:
         results.put(main.qualify(run_id))
     finally:
@@ -339,6 +342,7 @@ def test_actual_http_nested_retry_repair_replay_cannot_multiply_budget(postgres)
         data.pop("qualification_operation")
         db.save(session, run, data, "ready")
     physical_attempts = []
+    second_received = Event()
 
     class LLM(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -353,9 +357,12 @@ def test_actual_http_nested_retry_repair_replay_cannot_multiply_budget(postgres)
                 assert len(attempts) == len(physical_attempts)
                 assert attempts[-1].data["reserved_usd"] == "0.04"
             if len(physical_attempts) == 1:
-                # Lost acknowledgement after request receipt: ambiguous reservation is not refunded.
+                # Keep the first request open until the retry arrives: the client must time out,
+                # and its ambiguous committed reservation must not be refunded.
+                assert second_received.wait(10)
                 self.close_connection = True
                 return
+            second_received.set()
             raw = json.dumps({"choices": [{"message": {"content": "malformed qualification"}}]}).encode()
             self.send_response(200)
             self.send_header("Content-Length", str(len(raw)))

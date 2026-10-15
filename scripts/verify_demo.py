@@ -95,6 +95,51 @@ def main():
         time.sleep(1)
     else:
         raise AssertionError("Actual IMAP-triggered inquiry did not reach offered status")
+    original_email_run = email_runs[0]
+    # Same RFC Message-ID delivered as a new SMTP/IMAP message must retain one durable identity.
+    subprocess.run(["docker", "compose", "exec", "-T", "app", "python", "-c", code], cwd=ROOT, check=True)
+    for _ in range(45):
+        state = call(APP, "/api/state")
+        replayed_email = [r for r in state["runs"] if r["lead"]["request_id"] == email_id]
+        if replayed_email and len(replayed_email[0]["executions"]) >= 2:
+            assert len(replayed_email) == 1
+            assert replayed_email[0]["deal_id"] == original_email_run["deal_id"]
+            break
+        time.sleep(1)
+    else:
+        raise AssertionError("Repeated actual IMAP Message-ID did not deduplicate")
+    # Malformed headers fail this execution safely; the trigger must still consume later mail.
+    for missing_header in ("Message-ID", "From"):
+        before = len([a for a in state["alerts"] if a["run_id"].startswith("execution-")])
+        malformed_code = "\n".join(line for line in code.splitlines() if f"m['{missing_header}']" not in line)
+        malformed_code = malformed_code.replace(
+            "s.send_message(m)",
+            "s.send_message(m, from_addr='envelope@example.test', to_addrs=['demo@example.test'])",
+        )
+        subprocess.run(
+            ["docker", "compose", "exec", "-T", "app", "python", "-c", malformed_code], cwd=ROOT, check=True
+        )
+        for _ in range(45):
+            state = call(APP, "/api/state")
+            if len([a for a in state["alerts"] if a["run_id"].startswith("execution-")]) > before:
+                break
+            time.sleep(1)
+        else:
+            raise AssertionError("Malformed email headers did not produce a controlled execution warning")
+    distinct_email_id = PREFIX + "-distinct@example.test"
+    distinct_code = code.replace(repr("<" + email_id + ">"), repr("<" + distinct_email_id + ">"))
+    subprocess.run(
+        ["docker", "compose", "exec", "-T", "app", "python", "-c", distinct_code], cwd=ROOT, check=True
+    )
+    for _ in range(45):
+        state = call(APP, "/api/state")
+        distinct = [r for r in state["runs"] if r["lead"]["request_id"] == distinct_email_id]
+        if distinct and distinct[0]["status"] == "offered":
+            assert distinct[0]["id"] != original_email_run["id"]
+            break
+        time.sleep(1)
+    else:
+        raise AssertionError("IMAP trigger did not process distinct valid mail after malformed headers")
     failure = {
         **fixtures[0],
         "request_id": PREFIX + "-crm-fail",
@@ -158,6 +203,7 @@ def main():
     )
     summary = {
         "result": "PASS",
+        "git_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "batch": PREFIX,
         "checks": [
             "authenticated n8n webhooks",
@@ -167,7 +213,8 @@ def main():
             "concurrent redelivery without duplicate CRM records",
             "email + phone identity upsert",
             "Calendar booking replay and confirmation email",
-            "actual RFC-punctuation SMTP to GreenMail to n8n IMAP trigger",
+            "actual RFC-punctuation SMTP to GreenMail to n8n IMAP trigger and redelivery",
+            "missing email headers safely warn; distinct valid mail still consumes",
             "independent scheduled n8n monitor discovers stale run",
             "actual app/n8n restart preserves retained business IDs",
             "loopback-only published ports",

@@ -21,7 +21,8 @@ x-n8n-env: &n8n-env
   EXECUTIONS_DATA_SAVE_ON_ERROR: none
   EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
   EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
-  EXECUTIONS_DATA_PRUNE: "true"
+  # With save=none, pruning soft-deletes payloads first; false hard-deletes on completion.
+  EXECUTIONS_DATA_PRUNE: "false"
   EXECUTIONS_DATA_MAX_AGE: "168"
   GENERIC_TIMEZONE: UTC
   TZ: UTC

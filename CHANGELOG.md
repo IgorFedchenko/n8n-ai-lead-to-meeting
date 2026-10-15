@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Return generic schema-validation errors and suppress URL-bearing transport logs to protect private input.
+- Remove n8n execution payloads on completion and wait for registered, authenticated webhooks at startup.
+
 - Accept printable RFC Message-ID punctuation while retaining replay/collision checks.
 - Preserve business progress when an old n8n execution reports a late error.
 - Separate active mail reservations from uncertainty and require persisted ownership to finish.

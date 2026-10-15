@@ -81,13 +81,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: ./scripts/demo.sh
-      - run: python3 scripts/verify_demo.py
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
       - run: pip install -r requirements.lock playwright==1.58.0
       - run: python -m playwright install --with-deps chromium
       - run: python scripts/capture_demo.py
+      - run: python3 scripts/verify_demo.py
       - run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
@@ -106,6 +106,7 @@ jobs:
           path: |
             artifacts/acceptance.json
             artifacts/phoenix.json
+            artifacts/browser.json
             artifacts/video/
             docs/images/
           if-no-files-found: ignore
