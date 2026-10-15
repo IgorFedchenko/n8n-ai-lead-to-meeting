@@ -84,7 +84,7 @@ class Providers:
                 outcome = "http_error" if response.is_error else "response"
                 if not response.is_error:
                     body = response.json()
-                    usage = body.get("usage")
+                    usage = body.get("usage") if isinstance(body, dict) else None
                 if response.status_code != 429 and response.status_code < 500:
                     return response
             except httpx.TransportError:
@@ -101,7 +101,13 @@ class Providers:
         if response.is_error:
             # Never include provider bodies, request URLs or credentials in logs/alerts.
             raise IntegrationError(f"Remote service returned HTTP {response.status_code}")
-        return response.json()
+        try:
+            body = response.json()
+        except ValueError:
+            raise IntegrationError("Remote service returned invalid JSON") from None
+        if not isinstance(body, dict):
+            raise IntegrationError("Remote service returned an invalid envelope")
+        return body
 
     def qualify(self, lead: dict[str, Any]) -> str:
         data = dict(lead)
@@ -143,7 +149,13 @@ class Providers:
                 },
             )
             body = self.checked(response)
-            return "".join(c.get("text", "") for c in body.get("content", []) if c.get("type") == "text")
+            content = body.get("content", [])
+            if not isinstance(content, list) or any(not isinstance(part, dict) for part in content):
+                raise IntegrationError("LLM returned an invalid content envelope")
+            texts = [part.get("text", "") for part in content if part.get("type") == "text"]
+            if any(not isinstance(value, str) for value in texts):
+                raise IntegrationError("LLM returned invalid text")
+            return "".join(texts)
         if provider != "openai-compatible":
             raise IntegrationError("Unsupported LLM_PROVIDER")
         body = self.checked(
@@ -165,7 +177,13 @@ class Providers:
                 },
             )
         )
-        return body["choices"][0]["message"]["content"]
+        try:
+            text = body["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            raise IntegrationError("LLM returned an invalid choice envelope") from None
+        if not isinstance(text, str):
+            raise IntegrationError("LLM returned invalid text")
+        return text
 
     @property
     def crm_base(self):

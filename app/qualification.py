@@ -42,13 +42,3 @@ def validate_response(raw: str) -> Qualification:
 
     json.loads(raw, object_pairs_hook=unique_fields)
     return Qualification.model_validate_json(raw)
-
-
-def replay_responses(responses: list[str]) -> dict[str, Any]:
-    """The same repair/validation/routing boundary used by the runtime, without I/O."""
-    for raw in responses[:2]:
-        try:
-            return {"status": "qualified", "qualification": validate_response(raw).model_dump()}
-        except ValueError:
-            continue
-    return {"status": "manual_review", "manual_reason": "invalid_llm_output"}
