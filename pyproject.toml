@@ -16,6 +16,7 @@ test = ["pytest==9.1.1", "respx==0.22.0", "ruff==0.14.14", "mypy==1.19.1",
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["postgres: real PostgreSQL process and wire contracts"]
 
 [tool.ruff]
 line-length = 110

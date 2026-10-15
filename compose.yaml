@@ -44,6 +44,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://demo:${POSTGRES_PASSWORD}@postgres/n8n
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
     ports: ["127.0.0.1:${DEMO_PORT:-8088}:8000"]
     depends_on:
       postgres: {condition: service_healthy}

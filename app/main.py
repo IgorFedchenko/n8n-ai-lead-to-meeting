@@ -7,7 +7,8 @@ from pathlib import Path
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import ValidationError
 from sqlalchemy import delete, select
 
@@ -33,6 +34,12 @@ async def lifespan(app):
 
 
 app = FastAPI(title="Lead to Meeting — reference implementation", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(request: Request, error: RequestValidationError):
+    # n8n can include response bodies in execution errors. Never echo rejected inputs.
+    return JSONResponse(status_code=422, content={"detail": "Invalid request schema"})
 
 
 @app.middleware("http")

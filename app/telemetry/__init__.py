@@ -45,6 +45,10 @@ if not logger.handlers:
     logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 logger.propagate = False
+# HTTP client INFO/DEBUG records include complete URLs (including provider credentials).
+# Keep those third-party transport records out of application logs at every severity.
+for transport_logger in ("httpx", "httpcore"):
+    logging.getLogger(transport_logger).disabled = True
 
 
 @contextmanager

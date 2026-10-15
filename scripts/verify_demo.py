@@ -70,7 +70,7 @@ def main():
     by_phone = {**fixtures[0], "request_id": PREFIX + "-phone", "email": PREFIX + "-new@example.test"}
     assert call(N8N, "/webhook/lead", by_phone, key="webhook")["contact_id"] == runs[0]["contact_id"]
     # Deliver a real RFC 5322 email into GreenMail; n8n consumes it using its IMAP trigger.
-    email_id = PREFIX + "-email@example.test"
+    email_id = PREFIX + "-lead=42/a%25!#$&'*+-?^_`{|}~@example.test"
     code = "\n".join(
         [
             "import smtplib",
@@ -78,7 +78,7 @@ def main():
             "m=EmailMessage()",
             f"m['From']='Email Sample <{PREFIX}-inbox@example.test>'",
             "m['To']='demo@example.test'",
-            f"m['Message-ID']='<{email_id}>'",
+            f"m['Message-ID']={repr('<' + email_id + '>')}",
             "m['Subject']='Synthetic discovery inquiry'",
             "m.set_content('Lead routing and HubSpot automation. Budget USD 5000 within four weeks.')",
             "s=smtplib.SMTP('inbox',3025,timeout=10)",
