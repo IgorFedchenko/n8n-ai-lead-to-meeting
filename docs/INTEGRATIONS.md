@@ -21,7 +21,9 @@ into issues, workflow exports, screenshots or CI variables for the mock acceptan
 The adapter uses contact search/patch/create, a unique email fallback for ambiguous contact
 creation, a unique deal property for write reconciliation, and the standard deal-to-contact
 association. Currency is preserved in qualification; there is no exchange-rate conversion.
-Use a single account currency for demo deal amounts.
+Set `HUBSPOT_CURRENCY` to the account currency (USD/EUR/GBP). Only finite, nonnegative
+matching-currency budgets map to amount. Unknown/mismatched/null budgets omit amount on create
+and clear it with an empty string on PATCH; zero remains zero. No exchange-rate conversion.
 
 References: [contacts](https://developers.hubspot.com/docs/api-reference/legacy/crm/objects/contacts/guide),
 [deals](https://developers.hubspot.com/docs/api-reference/legacy/crm/objects/deals/guide),
@@ -74,7 +76,9 @@ Set SMTP host, port (STARTTLS, normally 587), username, password and sender on t
 application sends plain-text offers and confirmations. A persisted sending reservation is made
 before SMTP. If an acknowledgement is lost, it records `mail_delivery_uncertain` for manual
 reconciliation instead of resending automatically. Operators inspect their mail provider before
-deciding whether to retry; there is no automated manual-queue resolution UI.
+reconciling a verified delivery with the local [operator procedure](OPERATIONS.md). There is no
+automatic retry of an ambiguous send or operator editing UI. Active duplicate callers return
+`operation_status=in_progress`; they do not send or force false uncertainty.
 
 Reference: [n8n IMAP trigger](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.emailimap/).
 
@@ -101,15 +105,28 @@ Never publish the local n8n editor, mock server or dedicated demo inbox.
   or a numeric Retry-After capped at 10 seconds. Requests time out after 20 seconds.
 - n8n retries each adapter HTTP node three times, one second apart. Node timeout is 120 seconds;
   workflow timeout is 600 seconds. Thus an unavailable provider can receive up to nine attempts
-  for one operation; size quotas against the combined budget.
-- The JSON repair budget is two schema validation attempts; transient HTTP retry is separate.
+  for one CRM/calendar operation; size quotas against the combined budget. LLM calls are additionally
+  limited across the lifetime of a retained run, below.
+- The JSON repair budget is two validation attempts. Every physical LLM HTTP request (including
+  transport retries, repairs and later n8n retries) requires durable admission. Default lifetime
+  cap is six attempts per retained run. Live configuration requires explicit spend approval,
+  rate provenance, positive input/output USD-per-million rates and a positive run budget.
+  The admission reservation is `(max_input_bytes * input_rate + max_output_tokens * output_rate)
+  / 1,000,000`. UTF-8 payload bytes are a deliberately conservative input-token proxy; this is a
+  configured-rate ceiling, not a provider invoice guarantee. Models/tokenizers with larger input
+  accounting need an operator-adjusted bound. No reservation refunds happen automatically.
+  Set provider account spend caps as well. Missing live usage is unknown, never zero.
+- System prompt and schema are versioned under `prompts/`; content hashes bind replay fixtures.
+  Both provider protocols separate system instructions from serialized untrusted inquiry data.
 - Postgres's coarse advisory lock covers remote identity/booking work, favoring correctness at
   low volume. Multiple n8n workers cannot race contact resolution within this application.
   Other HubSpot writers remain outside this lock. A unique deal property is mandatory.
 - Free/busy plus event insert is not an atomic Calendar reservation. External calendar writers
   can race between those calls. An exclusive booking calendar reduces that risk.
-- The journal and local idempotency records expire after seven days of inactivity. Stale replay
-  after purging is outside the deduplication guarantee. Retention does not delete remote records.
+- Seven-day cleanup applies to safe offered/completed runs only. Active reservations,
+  uncertain/manual-review/failed state and undelivered alerts are retained until resolved.
+  This is an explicit exception to deletion after seven days. Deduplication and budget enforcement
+  end after explicit purge; remote CRM/calendar records and backups have separate retention.
 - The monitor detects in-progress runs older than ten minutes. It cannot alert if the entire
   stack is offline; a hosted deployment needs an external availability monitor.
 - Mock mail is idempotent by delivery key. Live SMTP uses at-most-one automatic attempt with

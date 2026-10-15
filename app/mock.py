@@ -51,7 +51,7 @@ def put(session, kind, key, data):
 
 @app.post("/v1/messages")
 def llm(body: dict):
-    lead = json.loads(body["messages"][0]["content"].split("\n", 1)[1])
+    lead = json.loads(body["messages"][0]["content"])["untrusted_inquiry"]
     scenario = lead.get("scenario", "normal")
     with Session(engine) as session, session.begin():
         key = "llm:" + lead["request_id"]

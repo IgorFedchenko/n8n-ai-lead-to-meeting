@@ -10,42 +10,60 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install -r requirements.lock pytest respx ruff
-      - run: ruff check app tests scripts
-      - run: ruff format --check app tests scripts
-      - run: pytest -q
+      - run: pip install -r requirements-dev.lock
+      - run: ruff check app tests scripts evals
+      - run: ruff format --check app tests scripts evals
+      - run: mypy app evals
+      - run: bandit -r app evals -q
+      - run: python scripts/scan_secrets.py
+      - run: pytest -q --junitxml=artifacts/tests.xml
+      - run: python -m evals.run --offline --output artifacts/evals.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: fast-checks
+          path: |
+            artifacts/tests.xml
+            artifacts/evals.json
       - run: python scripts/generate_workflows.py && git diff --exit-code workflows
   acceptance:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: ./scripts/demo.sh
       - run: python3 scripts/verify_demo.py
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - run: pip install playwright
+      - run: pip install -r requirements.lock playwright==1.58.0
       - run: python -m playwright install --with-deps chromium
       - run: python scripts/capture_demo.py
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - run: ./scripts/encode_demo.sh artifacts/video/demo.webm
+      - run: docker compose --profile observability up -d phoenix
+      - run: python scripts/verify_phoenix.py
       - name: Container diagnostics
         if: failure()
         run: |
           python3 scripts/diagnose.py
           docker compose logs --tail=60 app mock bootstrap n8n inbox
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: acceptance
           path: |
             artifacts/acceptance.json
+            artifacts/phoenix.json
             artifacts/video/
             docs/images/
           if-no-files-found: ignore
       - if: always()
-        run: docker compose down -v
+        run: docker compose --profile observability down -v

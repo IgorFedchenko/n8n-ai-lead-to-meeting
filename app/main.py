@@ -1,7 +1,6 @@
 import hmac
 import os
 import secrets
-import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,21 +11,37 @@ from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 from sqlalchemy import delete, select
 
-from app.db import Alert, Journal, Run, alert, get_run, init_db, save, snapshot, transaction
-from app.models import Booking, Intake, Qualification
+from app import llm_budget
+from app.db import Alert, Journal, LLMAttempt, Run, alert, get_run, init_db, save, snapshot, transaction
+from app.models import Booking, Intake
 from app.providers import IntegrationError, Providers, Retryable, candidate_slots, parse_time
+from app.qualification import attempt_hooks, usage_hook, validate_response
+from app.telemetry import operation
 
 providers = Providers()
 
 
 @asynccontextmanager
 async def lifespan(app):
+    if providers.mode == "live":
+        from app.config import LiveConfiguration
+
+        LiveConfiguration().validate()
     init_db()
     yield
     providers.client.close()
 
 
 app = FastAPI(title="Lead to Meeting — reference implementation", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def trace_run(request: Request, call_next):
+    # Never record paths, query strings, headers or bodies (booking URLs carry secrets).
+    with operation("run", stage="http") as span:
+        response = await call_next(request)
+        span.set_attribute("status", str(response.status_code))
+        return response
 
 
 def authorize(x_service_key: str = Header(default="")):
@@ -85,7 +100,8 @@ def stage(run_id, name, requires, action):
         if requires and requires not in data["done"]:
             raise HTTPException(409, f"Complete {requires} first")
         try:
-            action(data)
+            with operation("stage", run_id=run_id, stage=name):
+                action(data)
             data["done"] = data["done"] + [name]
             data.pop("failed_step", None)
             data.pop("error", None)
@@ -103,23 +119,69 @@ def stage(run_id, name, requires, action):
 
 @app.post("/api/runs/{run_id}/qualify", dependencies=[Depends(authorize)])
 def qualify(run_id: str):
-    def action(data):
-        for attempt in range(2):
-            try:
-                raw = providers.qualify(data["lead"])
-                data["qualification"] = Qualification.model_validate_json(raw).model_dump()
-                data.update(status="qualified", llm_attempts=attempt + 1)
-                return
-            except (ValidationError, ValueError, KeyError, IndexError):
-                if attempt == 1:
-                    data.update(status="manual_review", llm_attempts=2, manual_reason="invalid_llm_output")
-                else:
-                    time.sleep(float(os.getenv("RETRY_DELAY_SCALE", "1")))
-
-    response = stage(run_id, "qualify", None, action)
-    if response["status"] == "manual_review":
-        with transaction() as session:
-            alert(session, run_id, "invalid_llm_output")
+    owner = secrets.token_hex(16)
+    with transaction() as session:
+        run = get_run(session, run_id)
+        data = dict(run.data)
+        if "qualify" in data["done"] or data["status"] == "manual_review":
+            return result(run)
+        active = data.get("qualification_operation")
+        if active:
+            if parse_time(active["expires_at"]) > datetime.now(UTC):
+                return {**result(run), "operation_status": "in_progress"}
+            data.update(status="manual_review", manual_reason="qualification_interrupted")
+            save(session, run, data, "qualification_interrupted")
+            alert(session, run_id, "qualification_interrupted")
+            return result(run)
+        data["qualification_operation"] = {
+            "id": owner,
+            "expires_at": (datetime.now(UTC) + timedelta(minutes=5)).isoformat(),
+        }
+        save(session, run, data, "qualification_reserved")
+        lead = data["lead"]
+    # No transaction/identity lock spans LLM I/O: each HTTP admission must commit independently.
+    admission = attempt_hooks.set(lambda: llm_budget.admit(run_id, providers.mode, owner))
+    recording = usage_hook.set(llm_budget.record)
+    outcome: dict = {}
+    try:
+        with operation("qualification", run_id=run_id, stage="qualify"):
+            for _attempt in range(2):
+                try:
+                    raw = providers.qualify(lead)
+                    outcome = {"qualification": validate_response(raw).model_dump(), "status": "qualified"}
+                    break
+                except (ValidationError, ValueError, KeyError, IndexError) as error:
+                    if isinstance(error, llm_budget.BudgetDenied):
+                        outcome = {"status": "manual_review", "manual_reason": "llm_budget_exhausted"}
+                        break
+                    outcome = {"status": "manual_review", "manual_reason": "invalid_llm_output"}
+                except (Retryable, IntegrationError):
+                    outcome = {"status": "failed", "failed_step": "qualify", "error": "llm_unavailable"}
+                    break
+    finally:
+        attempt_hooks.reset(admission)
+        usage_hook.reset(recording)
+    with transaction() as session:
+        run = get_run(session, run_id)
+        data = dict(run.data)
+        active = data.get("qualification_operation", {})
+        if (
+            active.get("id") != owner
+            or data["status"] == "manual_review"
+            or parse_time(active["expires_at"]) <= datetime.now(UTC)
+        ):
+            save(session, run, data, "qualification_late_result")
+            return result(run)
+        data.pop("qualification_operation", None)
+        data.update(outcome, llm_attempts=_attempt + 1, llm_usage=llm_budget.summary(session, run_id))
+        if outcome["status"] in {"qualified", "manual_review"}:
+            data["done"] = data["done"] + ["qualify"]
+        if outcome["status"] != "qualified":
+            alert(session, run_id, outcome.get("manual_reason", "qualify_failed"))
+        save(session, run, data, "qualification_finished")
+        response = result(run)
+    if outcome["status"] == "failed":
+        raise HTTPException(503, "Qualification unavailable; committed attempt budget retained")
     return response
 
 
@@ -144,22 +206,41 @@ def slots(run_id: str):
     return stage(run_id, "slots", "crm", action)
 
 
+def expire_mail(session, run, data, kind):
+    """Called under the transaction lock; expiry permanently removes sender ownership."""
+    reservation = data.get(kind + "_reservation", {})
+    if data.get(kind + "_mail") == "sending" and (
+        not reservation or parse_time(reservation["expires_at"]) <= datetime.now(UTC)
+    ):
+        data[kind + "_mail"] = "uncertain"
+        data.update(status="manual_review", manual_reason="mail_delivery_uncertain")
+        save(session, run, data, kind + "_mail_expired")
+        alert(session, run.id, "mail_delivery_uncertain")
+
+
 def send_email(run_id, kind):
     key = f"{kind}:{run_id}"
+    owner = secrets.token_hex(16)
     with transaction() as session:
         run = get_run(session, run_id)
         data = dict(run.data)
+        expire_mail(session, run, data, kind)
         if data["status"] == "manual_review" or data.get(kind + "_mail") == "sent":
             return result(run)
         required = "slots" if kind == "offer" else "book"
         if required not in data["done"]:
             raise HTTPException(409, f"Complete {required} first")
-        if data.get(kind + "_mail") in {"sending", "uncertain"}:
-            data.update(status="manual_review", manual_reason="mail_delivery_uncertain")
-            alert(session, run_id, "mail_delivery_uncertain")
-            save(session, run, data, "mail_reconciliation_required")
+        if data.get(kind + "_mail") == "sending":
+            return {**result(run), "operation_status": "in_progress"}
+        if data.get(kind + "_mail") == "uncertain":
             return result(run)
         data[kind + "_mail"] = "sending"
+        data[kind + "_reservation"] = {
+            "id": owner,
+            "expires_at": (
+                datetime.now(UTC) + timedelta(seconds=int(os.getenv("SMTP_RESERVATION_SECONDS", "120")))
+            ).isoformat(),
+        }
         save(session, run, data, kind + "_mail_reserved")
         recipient = data["lead"]["email"]
         if kind == "offer":
@@ -170,29 +251,38 @@ def send_email(run_id, kind):
         else:
             body = f"Your 30-minute discovery meeting is confirmed for {data['booked_slot']} (UTC)."
             subject = "Your discovery meeting is confirmed"
+    succeeded = False
     try:
-        providers.email(key, recipient, subject, body)
+        with operation("mail", run_id=run_id, stage=kind):
+            providers.email(key, recipient, subject, body)
+        succeeded = True
     except Exception:
-        with transaction() as session:
-            run = get_run(session, run_id)
-            data = dict(run.data)
-            data.update(
-                {
-                    kind + "_mail": "uncertain",
-                    "status": "manual_review",
-                    "manual_reason": "mail_delivery_uncertain",
-                }
-            )
-            save(session, run, data, kind + "_mail_uncertain")
-            alert(session, run_id, "mail_delivery_uncertain")
-        raise HTTPException(502, "Email delivery requires reconciliation") from None
+        succeeded = False  # Any SMTP failure is ambiguous, including acknowledgement loss.
     with transaction() as session:
         run = get_run(session, run_id)
         data = dict(run.data)
-        data[kind + "_mail"] = "sent"
-        data["status"] = "offered" if kind == "offer" else "completed"
-        save(session, run, data, kind + "_mail_sent")
-        return result(run)
+        expire_mail(session, run, data, kind)
+        # Persisted ownership CAS, serialized by the transaction's advisory/SQLite write lock.
+        owned = data.get(kind + "_mail") == "sending" and (
+            data.get(kind + "_reservation", {}).get("id") == owner
+        )
+        if not owned:
+            save(session, run, data, kind + ("_mail_late_success" if succeeded else "_mail_late_failure"))
+            return result(run)
+        data[kind + "_mail"] = "sent" if succeeded else "uncertain"
+        if succeeded:
+            if kind == "confirmation":
+                data["status"] = "completed"
+            elif data["status"] == "slots_ready":
+                data["status"] = "offered"
+        else:
+            data.update(status="manual_review", manual_reason="mail_delivery_uncertain")
+            alert(session, run_id, "mail_delivery_uncertain")
+        save(session, run, data, kind + ("_mail_sent" if succeeded else "_mail_uncertain"))
+        response = result(run)
+    if not succeeded:
+        raise HTTPException(502, "Email delivery requires reconciliation")
+    return response
 
 
 @app.post("/api/runs/{run_id}/offer-email", dependencies=[Depends(authorize)])
@@ -247,7 +337,12 @@ def errors(payload: dict):
         for run in session.scalars(select(Run)):
             if execution_id in run.data["executions"]:
                 data = dict(run.data)
-                data.update(status="failed", error="n8n_execution_failed")
+                outcomes = dict(data.get("execution_outcomes", {}))
+                outcomes[execution_id] = "failed"
+                data["execution_outcomes"] = outcomes
+                # An execution notification is not authoritative about later business progress.
+                if data["status"] == "received" and execution_id == data["executions"][-1]:
+                    data.update(status="failed", error="n8n_execution_failed")
                 save(session, run, data, "n8n_error_workflow")
                 alert(session, run.id, "n8n_execution_failed")
                 matched = True
@@ -261,6 +356,9 @@ def monitor():
     delivered = 0
     with transaction() as session:
         for run in session.scalars(select(Run)):
+            data = dict(run.data)
+            for kind in ("offer", "confirmation"):
+                expire_mail(session, run, data, kind)
             updated = run.updated_at.replace(tzinfo=UTC) if run.updated_at.tzinfo is None else run.updated_at
             if run.data["status"] in {"received", "qualified", "crm_written", "slots_ready", "booked"} and (
                 datetime.now(UTC) - updated > timedelta(minutes=10)
@@ -272,7 +370,8 @@ def monitor():
                 providers.notify(item.key, item.run_id, item.reason)
                 item.delivered = True
                 delivered += 1
-            except Exception:
+            except Exception:  # nosec B112
+                # Keep failed deliveries in the durable outbox for the next monitor pass.
                 # Durable alert outbox is retried by the independent monitor workflow.
                 continue
     return {"delivered": delivered}
@@ -282,8 +381,19 @@ def monitor():
 def maintenance():
     cutoff = datetime.now(UTC) - timedelta(days=int(os.getenv("RETENTION_DAYS", "7")))
     with transaction() as session:
-        expired = list(session.scalars(select(Run.id).where(Run.updated_at < cutoff)))
+        pending = set(session.scalars(select(Alert.run_id).where(Alert.delivered.is_(False))))
+        expired = [
+            r.id
+            for r in session.scalars(select(Run).where(Run.updated_at < cutoff))
+            if r.data["status"] in {"offered", "completed"}
+            and r.id not in pending
+            and not r.data.get("qualification_operation")
+            and not any(
+                r.data.get(k + "_mail") in {"sending", "uncertain"} for k in ("offer", "confirmation")
+            )
+        ]
         if expired:
+            session.execute(delete(LLMAttempt).where(LLMAttempt.run_id.in_(expired)))
             session.execute(delete(Journal).where(Journal.run_id.in_(expired)))
             session.execute(delete(Alert).where(Alert.run_id.in_(expired)))
             session.execute(delete(Run).where(Run.id.in_(expired)))

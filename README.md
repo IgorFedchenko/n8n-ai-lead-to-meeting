@@ -2,18 +2,20 @@
 
 [![Verify reference implementation](https://github.com/IgorFedchenko/n8n-ai-lead-to-meeting/actions/workflows/ci.yml/badge.svg)](https://github.com/IgorFedchenko/n8n-ai-lead-to-meeting/actions/workflows/ci.yml)
 
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A working **reference implementation** for businesses that receive inquiries through web forms
 and email, then manually qualify leads, update their CRM and arrange discovery calls.
 Five n8n workflows turn an inquiry into a qualified HubSpot contact and deal, propose available
 meeting slots, and record a Google Calendar event with an email confirmation.
 
-The local demo costs **$0 in API usage**: recorded LLM responses, HTTP doubles for HubSpot and
+The local demo costs **$0 in API usage**: synthetic LLM responses, HTTP doubles for HubSpot and
 Google Calendar, a synthetic mail outbox, and a real local IMAP inbox. All names and records are
 synthetic. No employer/client code or data is included.
 
-![Running demo](docs/images/demo.png)
+![Running synthetic local demo](docs/images/demo.png)
 
-[Recorded booking](docs/images/booked.png) · [Verification evidence and CI recording](docs/VERIFICATION.md)
+[Recorded booking](docs/images/booked.png) · [Reproduce verification](docs/VERIFICATION.md)
 
 ```mermaid
 flowchart LR
@@ -98,7 +100,8 @@ compose.yaml   n8n + Postgres + adapter service + doubles + local IMAP/SMTP
   A Postgres advisory transaction lock serializes identity resolution across workers.
 - **Retries:** 429, 5xx and transport errors get three attempts with exponential delays (1/2 s,
   bounded Retry-After); n8n retries a failed HTTP node three times with a one-second pause.
-  These budgets are bounded but nested; read [operational limits](docs/INTEGRATIONS.md).
+  LLM physical attempts share a durable per-run admission budget (including retries/repair);
+  CRM/calendar retries remain nested. Read [operational limits](docs/INTEGRATIONS.md).
 - **Structured AI:** Anthropic Claude is the default live adapter; provider/model are configuration.
   An OpenAI-compatible structured-output adapter is also available. Local validation remains
   mandatory. Invalid responses get one further attempt, then manual review with no CRM writes.
@@ -110,7 +113,8 @@ compose.yaml   n8n + Postgres + adapter service + doubles + local IMAP/SMTP
   alert outbox. Live notifications use Telegram; local mode captures them without contacting anyone.
 - **Privacy:** webhook authentication, service authentication, no attachments, bounded input lengths,
   plain-text emails, prompt inputs treated as data, no provider bodies in alerts, no n8n execution
-  payload persistence. The application journal has a configurable seven-day retention policy.
+  payload persistence. Seven-day cleanup covers safe terminal runs only; active/uncertain/manual
+  and undelivered-alert records remain until resolved. See [operator procedures](docs/OPERATIONS.md).
 
 ## Connect real services
 
@@ -124,8 +128,11 @@ needed to build or verify the reference implementation.
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.lock pytest respx ruff
-.venv/bin/ruff check app tests scripts
+.venv/bin/pip install -r requirements-dev.lock
+.venv/bin/ruff check app tests scripts evals
+.venv/bin/mypy app evals
+.venv/bin/python -m evals.run --offline
+.venv/bin/pre-commit install
 .venv/bin/pytest -q
 ```
 
@@ -134,6 +141,28 @@ Compose stack and verifies webhooks, Postgres state, IMAP delivery, redelivery, 
 review, rate limiting and the separate error workflow. A Chromium run checks the form, replay,
 booking and the private recipient link from the captured invitation email. Successful acceptance produces a JSON
 receipt as a CI artifact; it contains identifiers and check names, with no inquiry bodies or secrets.
+
+## AI accounting, evaluation and traces
+
+Each physical LLM HTTP attempt is admitted in a committed Postgres record before network I/O.
+Retries and one output-repair share a retained run's attempt/cost ceiling; ambiguous errors consume
+the reservation. Usage returned by providers, elapsed time, prompt/schema hashes and explicitly
+configured cost estimates appear in the private run state. Missing usage stays unknown. Rates are
+operator inputs, not a price guarantee; set provider account spend caps separately.
+
+[Offline evals](evals/README.md) replay 14 separately annotated synthetic cases through the real HTTP
+qualification/repair route. They test regression behavior, schema rejection and routing; **no live
+model quality or injection resistance has been measured**. Optional live generation and rubric-judge
+commands are gated by explicit approval, credentials and durable call/cost limits. They never run in CI.
+
+[Manual OpenTelemetry spans and optional local Phoenix](docs/OBSERVABILITY.md) export allowlisted
+metadata only. Default execution makes no telemetry network calls. Prompt text, response text,
+contacts, booking tokens, headers and query strings are excluded from spans and structured events.
+
+CI runs lint/format, mypy, tests, synthetic replay, Bandit and a local secret scanner. Dependabot
+covers Python, Actions and Docker. CodeQL is guarded to public repositories; private paid Code
+Security/native secret-scanning entitlements are not enabled or claimed. See [verification](docs/VERIFICATION.md)
+and [architecture decisions](docs/adr/README.md).
 
 ## Boundaries
 
@@ -145,7 +174,7 @@ before hosting it. Booking offers last seven days; expired offers require operat
 
 The coarse transaction lock favors correctness over throughput. Calendar free/busy and insert
 are separate API calls: another system can still create an overlapping event between them.
-Idempotency covers the local retention window; a replay after deletion can create a new inquiry.
+Idempotency and durable budget enforcement cover retained identity/accounting records; a replay after deletion can create a new inquiry.
 Provider-owned CRM and Calendar records are not deleted by local retention. Backups and external
 provider retention remain operator responsibilities. Currency conversion, rescheduling, spam
 screening, calendar invitations/video links and an operator editing UI are outside this demo.

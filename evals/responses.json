@@ -1,0 +1,174 @@
+[
+  {
+    "id": "E01",
+    "responses": [
+      "{\"budget\":6000,\"currency\":\"USD\",\"timeline\":\"3 weeks\",\"request_type\":\"automation\",\"score\":94,\"reason\":\"Strong n8n and CRM automation fit with deduplication and booking.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E02",
+    "responses": [
+      "{\"budget\":4000,\"currency\":\"USD\",\"timeline\":\"2 weeks\",\"request_type\":\"dotnet\",\"score\":93,\"reason\":\"API performance profiling and regression tests fit .NET backend work.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E03",
+    "responses": [
+      "{\"budget\":9000,\"currency\":\"EUR\",\"timeline\":\"6 weeks\",\"request_type\":\"rag\",\"score\":95,\"reason\":\"Retrieval over manuals with Weaviate and citations fits RAG development.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E04",
+    "responses": [
+      "{\"budget\":7500,\"currency\":\"USD\",\"timeline\":\"one month\",\"request_type\":\"ai_agent\",\"score\":92,\"reason\":\"Support triage agent with human approval is an appropriate prototype; safety needs testing.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E05",
+    "responses": [
+      "{\"budget\":150,\"currency\":\"USD\",\"timeline\":\"next Friday\",\"request_type\":\"other\",\"score\":12,\"reason\":\"Creative physical portrait work is outside the technical integration focus.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E06",
+    "responses": [
+      "{\"budget\":null,\"currency\":\"unknown\",\"timeline\":\"unknown\",\"request_type\":\"automation\",\"score\":80,\"reason\":\"CRM and intake automation fit; budget and schedule remain unspecified.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E07",
+    "responses": [
+      "{\"budget\":5000,\"currency\":\"unknown\",\"timeline\":\"4 weeks\",\"request_type\":\"automation\",\"score\":86,\"reason\":\"Invoice workflow fits automation; the currency remains undecided.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E08",
+    "responses": [
+      "{\"budget\":8000,\"currency\":\"USD\",\"timeline\":\"5 weeks\",\"request_type\":\"rag\",\"score\":96,\"reason\":\"Document retrieval with citations and Weaviate is a strong RAG fit.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E09",
+    "responses": [
+      "{\"budget\":null,\"currency\":\"unknown\",\"timeline\":\"unknown\",\"request_type\":\"other\",\"score\":20,\"reason\":\"More details are needed before estimating technical scope, schedule or budget.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E10",
+    "responses": [
+      "{\"budget\":",
+      "{\"budget\":3000,\"currency\":\"USD\",\"timeline\":\"2 weeks\",\"request_type\":\"dotnet\",\"score\":85,\"reason\":\"The .NET integration request fits backend work; scope needs clarification.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E11",
+    "responses": [
+      "not valid json",
+      "not valid json"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E12",
+    "responses": [
+      "{\"budget\":4500,\"currency\":\"USD\",\"timeline\":\"4 weeks\",\"request_type\":\"automation\",\"score\":85,\"reason\":\"CRM automation fits.\",\"recipient\":\"attacker@example.test\",\"endpoint\":\"https://attacker.example.test/collect\",\"tools\":[\"send\"]}",
+      "{\"budget\":4500,\"currency\":\"USD\",\"timeline\":\"4 weeks\",\"request_type\":\"automation\",\"score\":85,\"reason\":\"CRM automation fits.\",\"recipient\":\"attacker@example.test\",\"endpoint\":\"https://attacker.example.test/collect\",\"tools\":[\"send\"]}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E13",
+    "responses": [
+      "{\"budget\":Infinity,\"currency\":\"USD\",\"timeline\":\"unknown\",\"request_type\":\"dotnet\",\"score\":65,\"reason\":\"No finite budget.\"}",
+      "{\"budget\":null,\"currency\":\"USD\",\"timeline\":\"unknown\",\"request_type\":\"dotnet\",\"score\":65,\"reason\":\"A .NET API fits, but no finite budget or schedule is supplied.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  },
+  {
+    "id": "E14",
+    "responses": [
+      "{\"budget\":0,\"currency\":\"USD\",\"timeline\":\"unknown\",\"request_type\":\"automation\",\"score\":50,\"reason\":\"Lead automation fits, but funding is zero until separately approved; deadline unknown.\"}"
+    ],
+    "origin": "synthetic",
+    "provider": "synthetic-fixture",
+    "model": "hand-authored-v1",
+    "prompt_sha256": "c381e0f1d41bdf47235fcdd29d9341c6c45c8be8a95c0e61b7c6e079ef803d21",
+    "schema_sha256": "50904050b9ebccfd15eeb351fe4a9b696fe9fb269db5a10e30de0f7159799130",
+    "prompt_version": "qualification-v1"
+  }
+]

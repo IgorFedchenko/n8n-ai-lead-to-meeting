@@ -1,0 +1,66 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "budget": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Budget"
+    },
+    "currency": {
+      "enum": [
+        "USD",
+        "EUR",
+        "GBP",
+        "unknown"
+      ],
+      "title": "Currency",
+      "type": "string"
+    },
+    "timeline": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Timeline",
+      "type": "string"
+    },
+    "request_type": {
+      "enum": [
+        "automation",
+        "ai_agent",
+        "rag",
+        "dotnet",
+        "other"
+      ],
+      "title": "Request Type",
+      "type": "string"
+    },
+    "score": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Score",
+      "type": "integer"
+    },
+    "reason": {
+      "maxLength": 800,
+      "minLength": 5,
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "budget",
+    "currency",
+    "timeline",
+    "request_type",
+    "score",
+    "reason"
+  ],
+  "title": "Qualification",
+  "type": "object"
+}

@@ -1,6 +1,8 @@
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import JSON, DateTime, Integer, String, create_engine, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
@@ -41,16 +43,18 @@ def init_db():
 
 
 @contextmanager
-def transaction():
+def transaction() -> Iterator[Session]:
     with Session(engine) as session, session.begin():
         # Serializes identity resolution and slot reservation across API workers.
         # Small-volume reference implementation; see docs before scaling this lock.
         if engine.dialect.name == "postgresql":
             session.execute(text("SELECT pg_advisory_xact_lock(76102416)"))
+        elif engine.dialect.name == "sqlite":
+            session.execute(text("BEGIN IMMEDIATE"))
         yield session
 
 
-def get_run(session, run_id):
+def get_run(session: Session, run_id: str) -> Run:
     run = session.get(Run, run_id)
     if run is None:
         from fastapi import HTTPException
@@ -59,22 +63,25 @@ def get_run(session, run_id):
     return run
 
 
-def save(session, run, data, event):
+def save(session: Session, run: Run, data: dict[str, Any], event: str) -> None:
     run.data = dict(data)
     run.updated_at = datetime.now(UTC)
     session.add(Journal(run_id=run.id, event=event))
 
 
-def alert(session, run_id, reason):
+def alert(session: Session, run_id: str, reason: str) -> None:
     key = f"{run_id}:{reason}"
     if session.get(Alert, key) is None:
         session.add(Alert(key=key, run_id=run_id, reason=reason))
 
 
-def snapshot(session):
+def snapshot(session: Session) -> dict[str, Any]:
+    from app.llm_budget import summary
+
     return {
         "runs": [
-            {"id": r.id, **r.data} for r in session.scalars(select(Run).order_by(Run.updated_at.desc()))
+            {"id": r.id, **r.data, "llm_usage": summary(session, r.id)}
+            for r in session.scalars(select(Run).order_by(Run.updated_at.desc()))
         ],
         "journal": [
             {"run_id": j.run_id, "event": j.event, "at": j.at.isoformat()}
@@ -85,3 +92,12 @@ def snapshot(session):
             for a in session.scalars(select(Alert))
         ],
     }
+
+
+class LLMAttempt(Base):
+    """Admission is committed before HTTP. Reservations never refund automatically."""
+
+    __tablename__ = "llm_attempts"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(64), index=True)
+    data: Mapped[dict] = mapped_column(JSON)

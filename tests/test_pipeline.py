@@ -198,3 +198,100 @@ def test_workflows_have_real_error_handler_and_no_secrets():
             assert workflow["settings"]["errorWorkflow"] == "leadErrors"
         assert workflow["settings"]["saveDataSuccessExecution"] == "none"
         assert "api-key" not in path.read_text()
+
+
+@pytest.mark.parametrize("late_failure", [False, True])
+def test_mail_owner_survives_active_duplicate_expiry_and_reconciliation(clients, monkeypatch, late_failure):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    client, _ = clients
+    run_id = client.post("/api/intake", json={"lead": lead()}).json()["run_id"]
+    for step in ("qualify", "crm", "slots"):
+        assert client.post(f"/api/runs/{run_id}/{step}").status_code == 200
+    entered, release = Event(), Event()
+    calls = []
+
+    def paused_sender(*args):
+        calls.append(args)
+        entered.set()
+        assert release.wait(5)
+        if late_failure:
+            raise OSError("synthetic acknowledgement lost")
+
+    monkeypatch.setattr(main.providers, "email", paused_sender)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(main.send_email, run_id, "offer")
+        assert entered.wait(5)
+        try:
+            active = main.send_email(run_id, "offer")
+            assert active["operation_status"] == "in_progress"
+            assert active["status"] == "slots_ready"
+            with db.transaction() as session:
+                run = db.get_run(session, run_id)
+                data = dict(run.data)
+                data["offer_reservation"] = {
+                    **data["offer_reservation"],
+                    "expires_at": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+                }
+                db.save(session, run, data, "synthetic_expiry")
+            main.monitor()
+            with db.transaction() as session:
+                run = db.get_run(session, run_id)
+                assert run.data["offer_mail"] == "uncertain"
+                data = {
+                    **run.data,
+                    "offer_mail": "sent",
+                    "status": "booked",
+                    "offer_reservation": {"id": "operator-reconciled"},
+                    "booked_slot": "synthetic-preserved-slot",
+                }
+                db.save(session, run, data, "synthetic_reconciliation")
+        finally:
+            release.set()
+        outcome = pending.result(timeout=5)
+    assert len(calls) == 1
+    assert outcome["status"] == "booked"
+    assert outcome["offer_mail"] == "sent"
+    assert outcome["booked_slot"] == "synthetic-preserved-slot"
+    events = client.get("/api/state").json()["journal"]
+    assert events[-1]["event"] == ("offer_mail_late_failure" if late_failure else "offer_mail_late_success")
+
+
+def test_late_execution_error_keeps_success_and_spans_private(clients):
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from app.telemetry import provider
+
+    client, _ = clients
+    exporter = InMemorySpanExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    run = pipeline(client)
+    client.post("/api/errors", json={"execution": {"id": "42", "error": {"message": "private-error-body"}}})
+    state = client.get("/api/state").json()
+    assert state["runs"][0]["status"] == "offered"
+    assert state["runs"][0]["execution_outcomes"]["42"] == "failed"
+    spans = exporter.get_finished_spans()
+    assert {s.name for s in spans} >= {"run", "stage", "qualification", "llm.attempt", "mail"}
+    attributes = json.dumps([dict(s.attributes) for s in spans])
+    for private in (lead()["email"], lead()["message"], run["booking_token"], "private-error-body"):
+        assert private not in attributes
+    assert run["llm_usage"]["physical_attempts"] == 1
+    assert run["llm_usage"]["attempts"][0]["input_tokens"] is None
+
+
+def test_durable_cap_counts_transient_attempt_before_any_retry(clients, monkeypatch):
+    client, remote = clients
+    monkeypatch.setenv("LLM_MAX_ATTEMPTS", "1")
+    payload = lead(scenario="transient")
+    run_id = client.post("/api/intake", json={"lead": payload}).json()["run_id"]
+    response = client.post(f"/api/runs/{run_id}/qualify")
+    assert response.status_code == 200
+    assert response.json()["manual_reason"] == "llm_budget_exhausted"
+    assert response.json()["llm_usage"]["physical_attempts"] == 1
+    assert response.json()["llm_usage"]["attempts"][0]["status"] == "http_error"
+    assert response.json()["llm_usage"]["attempts"][0]["reserved_usd"] == "0"
+    client.post(f"/api/runs/{run_id}/qualify")
+    state = remote.get("/state").json()
+    assert state["llm"][0]["attempts"] == 1

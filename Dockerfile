@@ -5,5 +5,6 @@ COPY requirements.lock .
 RUN pip install --no-cache-dir -r requirements.lock
 RUN useradd --create-home --uid 10001 app
 COPY app ./app
+COPY prompts ./prompts
 USER app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

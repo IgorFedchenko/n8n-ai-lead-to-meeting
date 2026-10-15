@@ -54,7 +54,10 @@ def main():
             timeout=120000,
         )
         assert not errors, errors
+        video = page.video
         context.close()
+        if video:
+            video.save_as(str(ROOT / "artifacts/video/demo.webm"))
         browser.close()
     print("PASS: browser form, replay, booking, private email link and screenshots; no JavaScript errors")
 

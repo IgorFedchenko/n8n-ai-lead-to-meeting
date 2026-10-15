@@ -1,42 +1,46 @@
-# Verification evidence
+# Reproduce verification
 
-Acceptance is only complete with green actual-stack and browser checks on the committed revision.
-Real SaaS accounts and paid LLM APIs are excluded from this verification.
+All default verification is synthetic and free of SaaS/LLM calls. Install `requirements-dev.lock`
+into a Python 3.12 virtualenv. CI commands are visible in `.github/workflows/ci.yml`.
 
-## Diagnostic history
+```sh
+.venv/bin/ruff check app tests scripts evals
+.venv/bin/ruff format --check app tests scripts evals
+.venv/bin/mypy app evals
+.venv/bin/bandit -r app evals -q
+.venv/bin/python scripts/scan_secrets.py
+.venv/bin/pytest -q
+.venv/bin/python -m evals.run --offline --output artifacts/evals.json
+.venv/bin/python scripts/generate_workflows.py
+git diff --exit-code workflows
+```
 
-- Initial CI: unit/contract checks passed; actual n8n flow stopped at CRM with HTTP 503.
-  The error workflow was also not published, which n8n 2.43.6 requires before invoking it.
-- Second CI: metadata-only diagnostic probe confirmed fingerprint `done=[qualify], failed_step=crm,
-  error=Retryable`, with no mock-server exception. The separately published Error Trigger delivered
-  the expected warning. Cause: an empty live HubSpot token from `.env.example` produced the illegal
-  HTTP header `Authorization: Bearer ` before any mock CRM request was sent.
-- Changed variable: mock authentication now always uses a synthetic token; live authentication rejects
-  blank configuration. The service test fixture reproduces blank host credentials, and a direct
-  regression test checks both modes. No unchanged failing scenario was blindly rerun.
+The fast tests use SQLite and HTTP/SMTP protocol doubles. They do not establish real n8n,
+Postgres lock behavior, IMAP delivery or live provider compatibility. The synthetic eval runner
+injects raw HTTP completion responses through the actual qualification route and database accounting;
+it compares results to separate annotations, not fixture-to-fixture equality.
 
-## Passing evidence
+Actual stack verification starts n8n, Postgres, adapter service, synthetic HTTP providers and
+GreenMail. It submits authenticated webhooks, delivers SMTP into the real IMAP trigger and
+observes persisted outcomes, captured mail, warnings and booking. Chromium checks form/replay,
+booking and the recipient link. HubSpot, Calendar, LLM and alert delivery remain local doubles.
 
-- [Full CI run 38815743482](https://github.com/IgorFedchenko/n8n-ai-lead-to-meeting/actions/runs/38815743482),
-  functional revision `7b6627b60d514b23b0d1910af144beee2d1cff7e`: both jobs passed.
-- **16 service/contract tests**: validation and repair, empty live credentials in mock mode,
-  Anthropic/OpenAI-compatible HTTP contracts, Google OAuth/free-busy/event contracts, payload
-  collision, contact identity, slot conflicts, partial CRM failure, uncertain SMTP, retention,
-  stalled runs and error alerts. Ruff and export reproducibility checks passed.
-- **Actual stack acceptance**: authenticated n8n webhooks, Postgres journal, concurrent redelivery,
-  phone/email upsert, JSON repair, invalid output/manual review, 429 retry, real SMTP→IMAP intake,
-  Calendar replay, one confirmation email, zero-write warning and separate n8n Error Trigger.
-- **Browser acceptance**: inquiry form, replay with unchanged CRM counts, booking and confirmation;
-  no JavaScript errors. Screenshots below came from that running stack, with synthetic data only.
-- The final CI also follows the invitation email's private recipient booking link.
+```sh
+./scripts/demo.sh
+python3 scripts/verify_demo.py
+python scripts/capture_demo.py
+```
 
-![Qualified inquiry and available slots](images/demo.png)
-![Recorded meeting and confirmation](images/booked.png)
+On a host with a shared heavy-job queue, prefix Docker/build/browser commands with its queue wrapper.
+CI runs the real stack on an isolated hosted runner. Machine-readable receipts and browser videos
+are uploaded as artifacts; only synthetic screenshots/GIF belong in the source tree.
+Convert a passing current browser recording with `scripts/encode_demo.sh CAPTURE.webm`; on a queued
+host run encoding through the same heavy-job wrapper. Screenshots/recording illustrate the synthetic
+local workflow, not live SaaS certification.
 
-The CI `acceptance` artifact includes the machine-readable check receipt and browser recording.
-Heavy work ran on the GitHub Linux runner. The Studio heavy queue had 49 pending jobs; this
-task's still-waiting local ticket was withdrawn before any Docker build started. No other jobs
-were interrupted. The same Compose launch command remains available for local owner review.
+Optional local Phoenix ingestion requires its [separate smoke check](OBSERVABILITY.md).
+Live services and model/judge quality need operator-owned credentials, approval and a new explicit
+verification record. No live quality score is implied by a synthetic replay pass.
 
-Live HubSpot, real Calendar accounts, real mail delivery and a paid LLM were not exercised.
-Make/Zapier portability is documented; no second hosted scenario is claimed.
+CodeQL runs only when the repository is public. Private paid Code Security/native secret-scanning
+entitlements are unavailable for this reference; Bandit and detect-secrets run without those products.

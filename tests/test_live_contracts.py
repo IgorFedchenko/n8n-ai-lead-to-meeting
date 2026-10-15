@@ -7,6 +7,16 @@ from app.models import Qualification
 from app.providers import IntegrationError, Providers
 
 
+@pytest.fixture(autouse=True)
+def metered_transport_contract():
+    # These isolated wire-contract tests replace admission; runtime budget tests use the database.
+    from app.qualification import attempt_hooks
+
+    token = attempt_hooks.set(lambda: "synthetic-transport-attempt")
+    yield
+    attempt_hooks.reset(token)
+
+
 def test_mock_ignores_empty_live_credential_but_live_rejects_it(monkeypatch):
     monkeypatch.setenv("HUBSPOT_ACCESS_TOKEN", "")
     monkeypatch.setenv("INTEGRATION_MODE", "mock")

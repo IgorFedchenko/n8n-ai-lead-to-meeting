@@ -1,0 +1,25 @@
+name: CodeQL (public repositories only)
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  availability:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'CodeQL runs only when public. Private paid entitlement is not enabled; Bandit runs in CI.'
+  analyze:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: github/codeql-action/init@f051dc808ef3645eb0d08647ec751634ec2304ac # v4
+        with:
+          languages: python
+      - uses: github/codeql-action/analyze@f051dc808ef3645eb0d08647ec751634ec2304ac # v4

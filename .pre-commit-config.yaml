@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: Ruff lint
+        entry: .venv/bin/ruff check
+        language: system
+        types: [python]
+      - id: format
+        name: Ruff format
+        entry: .venv/bin/ruff format --check
+        language: system
+        types: [python]
+      - id: types
+        name: Mypy runtime and evals
+        entry: .venv/bin/mypy app evals
+        language: system
+        pass_filenames: false
+      - id: secrets
+        name: Local secret scan
+        entry: .venv/bin/python scripts/scan_secrets.py
+        language: system
+        pass_filenames: false

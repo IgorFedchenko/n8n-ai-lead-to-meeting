@@ -87,6 +87,15 @@ services:
       app: {condition: service_healthy}
     mem_limit: 768m
 
+  phoenix:
+    image: arizephoenix/phoenix:20.22.0
+    profiles: [observability]
+    ports: ["127.0.0.1:6006:6006"]
+    environment:
+      PHOENIX_WORKING_DIR: /data
+    volumes: [phoenix_data:/data]
+    mem_limit: 1024m
+
   n8n:
     image: docker.n8n.io/n8nio/n8n:2.43.6
     environment: *n8n-env
@@ -99,3 +108,4 @@ services:
 volumes:
   pg_data:
   n8n_data:
+  phoenix_data:
