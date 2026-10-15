@@ -1,0 +1,23 @@
+[project]
+name = "lead-to-meeting"
+version = "0.1.0"
+description = "Durable adapters for the n8n lead-to-meeting reference workflows"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "httpx>=0.28,<1",
+  "sqlalchemy>=2.0,<3", "psycopg[binary]>=3.2,<4", "pydantic>=2.10,<3",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "respx>=0.22,<1", "ruff>=0.11,<1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

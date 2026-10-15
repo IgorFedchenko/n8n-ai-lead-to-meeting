@@ -1,0 +1,40 @@
+name: Verify reference implementation
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.lock pytest respx ruff
+      - run: ruff check app tests scripts
+      - run: ruff format --check app tests scripts
+      - run: pytest -q
+      - run: python scripts/generate_workflows.py && git diff --exit-code workflows
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/demo.sh
+      - run: python3 scripts/verify_demo.py
+      - name: Container diagnostics
+        if: failure()
+        run: docker compose logs --tail=60 app bootstrap n8n inbox
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acceptance
+          path: artifacts/acceptance.json
+          if-no-files-found: ignore
+      - if: always()
+        run: docker compose down -v

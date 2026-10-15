@@ -1,0 +1,6 @@
+[
+  {"request_id":"demo-form-001","source":"form","name":"Alex Sample","email":"alex@example.test","phone":"+1 (202) 555-0101","message":"We need to qualify inbound leads, sync HubSpot and book discovery calls. Budget USD 5000, within four weeks."},
+  {"request_id":"demo-repair-002","name":"Sam Sample","email":"sam@example.test","phone":"+12025550102","message":"Build an AI assistant for lead qualification. Budget USD 5000, within four weeks.","scenario":"invalid_once"},
+  {"request_id":"demo-review-003","name":"Jamie Sample","email":"jamie@example.test","phone":"","message":"Please discuss our automation request; details are incomplete.","scenario":"invalid"},
+  {"request_id":"demo-retry-004","name":"Taylor Sample","email":"taylor@example.test","phone":"+12025550104","message":"We need production lead routing with CRM integration in four weeks.","scenario":"transient"}
+]

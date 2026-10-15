@@ -1,0 +1,349 @@
+{
+  "id": "leadEmail",
+  "name": "02 \u00b7 Incoming email \u2192 qualification pipeline",
+  "active": false,
+  "nodes": [
+    {
+      "id": "1aa5b892-9799-5ddd-ab05-da18f2edb385",
+      "name": "IMAP inbox",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "read",
+        "downloadAttachments": false,
+        "format": "simple",
+        "options": {}
+      },
+      "credentials": {
+        "imap": {
+          "id": "leadImap",
+          "name": "Dedicated inquiry inbox"
+        }
+      }
+    },
+    {
+      "id": "b6087b71-91a7-5cea-b361-d628b8000717",
+      "name": "Normalize email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        230,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const m = $json;\nconst from = typeof m.from === 'string' ? m.from : (m.from?.text || '');\nconst email = (from.match(/<([^>]+)>/) || from.match(/([^\\s<>]+@[^\\s<>]+)/) || [])[1];\nconst requestId = m.messageId || m.metadata?.['message-id'];\nif (!requestId || !email) throw new Error('Email requires Message-ID and a sender address');\nreturn [{json: {lead: {request_id: String(requestId).replace(/[<>]/g, ''), source: 'email',\nname: from.replace(/<[^>]+>/g, '').trim() || email, email, phone: '',\nmessage: String(m.textPlain || m.text || '').trim()}, execution_id: $execution.id}}];"
+      }
+    },
+    {
+      "id": "cfd91f00-5f2e-55c3-b61a-606b9d9dd6e7",
+      "name": "Accept and deduplicate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:8000/api/intake",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "18218e97-a4e1-5d69-b595-29202f244ecb",
+      "name": "Qualify \u2014 JSON Schema",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        690,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:8000/api/runs/{{ $json.run_id }}/qualify",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "3237661b-93a9-5e68-8bb8-3cc27cc586ea",
+      "name": "Upsert contact and deal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        930,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:8000/api/runs/{{ $json.run_id }}/crm",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "2db80d7f-df1f-5558-88f3-dd4781c13a7f",
+      "name": "Find available slots",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1170,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:8000/api/runs/{{ $json.run_id }}/slots",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "9ba55ffe-7573-5809-93ee-a2cbf06a0577",
+      "name": "Email slot proposal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1410,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:8000/api/runs/{{ $json.run_id }}/offer-email",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "f6c042d4-a681-545a-a098-d043471c529f",
+      "name": "Verify CRM writes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1650,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:8000/api/runs/{{ $json.run_id }}/finish",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "f1720519-05c5-5b4a-aebc-bbc95e3f7d5f",
+      "name": "Flush warning outbox",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1890,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:8000/api/monitor",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    }
+  ],
+  "connections": {
+    "IMAP inbox": {
+      "main": [
+        [
+          {
+            "node": "Normalize email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize email": {
+      "main": [
+        [
+          {
+            "node": "Accept and deduplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accept and deduplicate": {
+      "main": [
+        [
+          {
+            "node": "Qualify \u2014 JSON Schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qualify \u2014 JSON Schema": {
+      "main": [
+        [
+          {
+            "node": "Upsert contact and deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert contact and deal": {
+      "main": [
+        [
+          {
+            "node": "Find available slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find available slots": {
+      "main": [
+        [
+          {
+            "node": "Email slot proposal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email slot proposal": {
+      "main": [
+        [
+          {
+            "node": "Verify CRM writes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify CRM writes": {
+      "main": [
+        [
+          {
+            "node": "Flush warning outbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false,
+    "executionTimeout": 600,
+    "errorWorkflow": "leadErrors"
+  },
+  "pinData": {},
+  "tags": []
+}

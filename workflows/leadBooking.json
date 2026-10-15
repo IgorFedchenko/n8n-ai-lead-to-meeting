@@ -1,0 +1,152 @@
+{
+  "id": "leadBooking",
+  "name": "03 \u00b7 Book meeting \u2192 confirmation email",
+  "active": false,
+  "nodes": [
+    {
+      "id": "a613dedf-1750-5865-8e55-5fa8722512c0",
+      "name": "Booking webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "book",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "490c5767-a929-5e40-8f0f-d4c2cbe834b7",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "leadWebhookAuth",
+          "name": "Lead webhook token"
+        }
+      }
+    },
+    {
+      "id": "17eea474-e39e-582b-9c19-ceb127c27554",
+      "name": "Reserve calendar event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:8000/api/book",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "4fe04e13-35c6-5bfa-829d-2fdb85953f47",
+      "name": "Email confirmation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://app:8000/api/runs/{{ $json.run_id }}/confirmation-email",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Service-Key",
+              "value": "={{ $env.SERVICE_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000
+    },
+    {
+      "id": "f8a80305-6d2a-531a-978f-d5bbf685a345",
+      "name": "Return booking",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        780,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Booking webhook": {
+      "main": [
+        [
+          {
+            "node": "Reserve calendar event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reserve calendar event": {
+      "main": [
+        [
+          {
+            "node": "Email confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email confirmation": {
+      "main": [
+        [
+          {
+            "node": "Return booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false,
+    "executionTimeout": 600,
+    "errorWorkflow": "leadErrors"
+  },
+  "pinData": {},
+  "tags": []
+}
