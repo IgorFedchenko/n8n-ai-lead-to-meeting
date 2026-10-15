@@ -39,7 +39,10 @@ class Providers:
                 if response.status_code == 429 or response.status_code >= 500:
                     if attempt == 2:
                         raise Retryable("Remote service unavailable after three attempts")
-                    wait = min(float(response.headers.get("retry-after", 2**attempt)), 10)
+                    try:
+                        wait = min(max(float(response.headers.get("retry-after", 2**attempt)), 0), 10)
+                    except ValueError:
+                        wait = 2**attempt
                     time.sleep(wait * float(os.getenv("RETRY_DELAY_SCALE", "1")))
                     continue
                 return response

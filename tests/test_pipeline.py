@@ -104,6 +104,13 @@ def test_auth_and_booking_guards(clients):
     booking["slot"] = "2099-01-01T12:00:00+00:00"
     assert client.post("/api/book", json=booking).status_code == 409
     assert client.post(f"/api/runs/{run['run_id']}/confirmation-email").status_code == 409
+    assert client.get("/public/offer", params={"run_id": run["run_id"]}).status_code == 403
+    public = client.get(
+        "/public/offer", params={"run_id": run["run_id"]}, headers={"X-Booking-Token": run["booking_token"]}
+    )
+    assert public.status_code == 200
+    assert set(public.json()) == {"status", "slots", "booked_slot"}
+    assert "no-referrer" in client.get("/booking").headers["referrer-policy"]
 
 
 def test_calendar_conflict_and_alternative_slot(clients):

@@ -1,6 +1,7 @@
 import hmac
 import os
 import secrets
+import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -112,6 +113,8 @@ def qualify(run_id: str):
             except (ValidationError, ValueError, KeyError, IndexError):
                 if attempt == 1:
                     data.update(status="manual_review", llm_attempts=2, manual_reason="invalid_llm_output")
+                else:
+                    time.sleep(float(os.getenv("RETRY_DELAY_SCALE", "1")))
 
     response = stage(run_id, "qualify", None, action)
     if response["status"] == "manual_review":
@@ -162,7 +165,7 @@ def send_email(run_id, kind):
         if kind == "offer":
             base = os.getenv("PUBLIC_DEMO_URL", "http://localhost:8088")
             body = "Choose a 30-minute discovery slot (UTC), valid for 7 days:\n" + "\n".join(data["slots"])
-            body += f"\nBook: {base}/?run={run_id}#token={data['booking_token']}"
+            body += f"\nBook: {base}/booking?run={run_id}#token={data['booking_token']}"
             subject = "Choose your discovery meeting"
         else:
             body = f"Your 30-minute discovery meeting is confirmed for {data['booked_slot']} (UTC)."
@@ -298,6 +301,51 @@ def demo():
     if providers.mode != "mock":
         raise HTTPException(404)
     return Path(__file__).with_name("demo.html").read_text()
+
+
+@app.get("/booking", response_class=HTMLResponse)
+def booking_page():
+    return HTMLResponse(
+        Path(__file__).with_name("booking.html").read_text(),
+        headers={
+            "Referrer-Policy": "no-referrer",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@app.get("/public/offer")
+def public_offer(run_id: str, x_booking_token: str = Header(default="")):
+    with transaction() as session:
+        run = get_run(session, run_id)
+        data = run.data
+        if not hmac.compare_digest(data["booking_token"], x_booking_token):
+            raise HTTPException(403, "Invalid booking token")
+        if "offered_at" not in data or datetime.now(UTC) - parse_time(data["offered_at"]) > timedelta(days=7):
+            raise HTTPException(410, "Offer unavailable or expired")
+        return {
+            "status": data["status"],
+            "slots": data.get("slots", []),
+            "booked_slot": data.get("booked_slot"),
+        }
+
+
+@app.post("/public/book")
+async def public_book(body: Booking):
+    # Validate before forwarding; this public boundary never returns PII or internal credentials.
+    public_offer(body.run_id, body.token)
+    url = os.getenv("N8N_INTERNAL_URL", "http://n8n:5678") + "/webhook/book"
+    async with httpx.AsyncClient(timeout=120) as client:
+        response = await client.post(
+            url, headers={"X-Webhook-Token": os.getenv("WEBHOOK_TOKEN", "")}, json=body.model_dump()
+        )
+    if response.is_error:
+        raise HTTPException(
+            409, "Booking could not be confirmed; check availability or contact the organizer"
+        )
+    outcome = response.json()
+    return {"status": outcome["status"], "booked_slot": outcome.get("booked_slot")}
 
 
 @app.api_route("/demo/{path:path}", methods=["GET", "POST"])

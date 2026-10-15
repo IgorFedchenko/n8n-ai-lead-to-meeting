@@ -15,7 +15,7 @@ fs.writeFileSync(process.env.CREDENTIAL_FILE, JSON.stringify(credentials), {mode
 JS
 n8n import:credentials --input="$credential_file"
 n8n import:workflow --separate --input=/workflows
-for workflow in leadIntake leadBooking leadMonitor; do
+for workflow in leadErrors leadIntake leadBooking leadMonitor; do
   n8n publish:workflow --id="$workflow"
 done
 if [ "$INTEGRATION_MODE" = mock ]; then

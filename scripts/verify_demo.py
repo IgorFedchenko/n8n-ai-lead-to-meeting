@@ -145,4 +145,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        subprocess.run(["python3", str(ROOT / "scripts/diagnose.py")], cwd=ROOT, check=False)
+        raise

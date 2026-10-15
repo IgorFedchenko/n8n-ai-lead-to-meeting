@@ -27,14 +27,25 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./scripts/demo.sh
       - run: python3 scripts/verify_demo.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python scripts/capture_demo.py
       - name: Container diagnostics
         if: failure()
-        run: docker compose logs --tail=60 app bootstrap n8n inbox
+        run: |
+          python3 scripts/diagnose.py
+          docker compose logs --tail=60 app mock bootstrap n8n inbox
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: acceptance
-          path: artifacts/acceptance.json
+          path: |
+            artifacts/acceptance.json
+            artifacts/video/
+            docs/images/
           if-no-files-found: ignore
       - if: always()
         run: docker compose down -v
