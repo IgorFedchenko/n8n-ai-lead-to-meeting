@@ -29,8 +29,8 @@ booking and the recipient link. HubSpot, Calendar, LLM and alert delivery remain
 
 ```sh
 ./scripts/demo.sh
-python3 scripts/verify_demo.py
 python scripts/capture_demo.py
+python3 scripts/verify_demo.py
 ```
 
 On a host with a shared heavy-job queue, prefix Docker/build/browser commands with its queue wrapper.
@@ -88,12 +88,15 @@ The SMTP server in these tests is a minimal loopback test server; live TLS/authe
 compatibility remains unverified. A "not delivered" reconciliation fixture preserves uncertainty
 and never authorizes automatic resend; the documented operator command supports verified delivery only.
 
-The `acceptance` CI job builds the actual stack, runs `verify_demo.py`, installs Chromium, records
-`capture_demo.py`, converts that current video with FFmpeg, then starts optional Phoenix and runs
+The `acceptance` CI job builds the actual stack, installs Chromium, records `capture_demo.py` before
+bulk acceptance fixtures, runs `verify_demo.py`, converts that current video with FFmpeg, then starts
+optional Phoenix and runs
 `verify_phoenix.py`. Default startup does not start Phoenix. Its receipt includes trace/span IDs,
 parent IDs and counts, without raw prompts, completions, headers, contacts or booking URLs.
 Privacy checks cover the actual app/mock/n8n/bootstrap logs, Phoenix data, n8n `execution_data`
-and alert metadata, including malformed intake/schema errors. Synthetic operational state and
+and alert metadata, including malformed intake/schema errors. These execution-data checks cover
+production webhooks, IMAP and scheduled workflows. Editor/manual execution privacy and retention
+remain unverified; use only synthetic editor data and erase local volumes after experiments. Synthetic operational state and
 mailbox bodies are intentionally private application data, not telemetry artifacts.
 
 `detect-secrets==1.5.0` is the free secret scanner used here. The reviewed baseline allows only exact

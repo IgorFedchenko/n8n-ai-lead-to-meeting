@@ -53,10 +53,26 @@ if not logger.handlers:
     logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 logger.propagate = False
-# HTTP client INFO/DEBUG records include complete URLs (including provider credentials).
-# Keep those third-party transport records out of application logs at every severity.
-for transport_logger in ("httpx", "httpcore"):
-    logging.getLogger(transport_logger).disabled = True
+
+
+def suppress_transport_logs() -> None:
+    """Discard transport records before they can reach ancestor/root handlers.
+
+    Ancestor disabled flags and logger filters do not apply to propagated child records.
+    The namespace boundary also consumes records from descendants created after startup.
+    Existing descendants may already own handlers, so remove those sinks as well.
+    """
+    namespaces = ("httpx", "httpcore")
+    names = {*namespaces, *logging.Logger.manager.loggerDict}
+    for name in names:
+        if any(name == namespace or name.startswith(namespace + ".") for namespace in namespaces):
+            transport = logging.getLogger(name)
+            transport.handlers = [logging.NullHandler()]
+            transport.propagate = False
+            transport.disabled = True
+
+
+suppress_transport_logs()
 
 
 @contextmanager

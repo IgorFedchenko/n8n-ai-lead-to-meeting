@@ -98,7 +98,7 @@ def test_parser_rejects_ambiguous_or_oversize_raw(raw):
         validate_response(raw)
 
 
-def test_intake_validation_response_and_transport_logs_do_not_echo_inputs(clients, caplog):
+def test_intake_validation_response_does_not_echo_inputs(clients):
     client, _ = clients
     sentinel = "PRIVATE_VALIDATION_SENTINEL"
     for payload in (
@@ -109,10 +109,6 @@ def test_intake_validation_response_and_transport_logs_do_not_echo_inputs(client
         response = client.post("/api/intake", json=payload)
         assert response.status_code == 422
         assert sentinel not in response.text
-    caplog.set_level(logging.DEBUG)
-    client.get("/public/offer?run_id=" + sentinel, headers={"X-Booking-Token": sentinel})
-    assert sentinel not in caplog.text
-    assert logging.getLogger("httpx").disabled and logging.getLogger("httpcore").disabled
 
 
 @pytest.mark.parametrize("missing", LiveConfiguration().required)
@@ -588,3 +584,86 @@ def test_exporter_rejects_remote_userinfo_token_urls_and_non_http_before_io(endp
     assert result.returncode != 0
     assert "Telemetry exporter must be a local endpoint" in result.stderr
     assert "PRIVATE_ENDPOINT_SENTINEL" not in result.stdout + result.stderr
+
+
+def test_transport_namespace_discards_real_http_debug_headers_and_future_children(caplog):
+    import io
+    from concurrent.futures import ThreadPoolExecutor
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from app.telemetry import logger, operation, suppress_transport_logs
+
+    caplog.set_level(logging.DEBUG)
+    old_sink = io.StringIO()
+    for namespace in ("httpx", "httpcore"):
+        existing = logging.getLogger(namespace + ".preexisting.protocol")
+        existing.disabled = False
+        existing.handlers = [logging.StreamHandler(old_sink)]
+    suppress_transport_logs()
+    for namespace in ("httpx", "httpcore"):
+        for name in ("preexisting.protocol", "future.protocol"):
+            transport = logging.getLogger(namespace + "." + name)
+            for severity in (logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL):
+                transport.log(severity, "PRIVATE_DESCENDANT_SENTINEL")
+
+    class Server(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("X-Private", "PRIVATE_RESPONSE_HEADER_SENTINEL")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Server) as server:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            running = pool.submit(server.serve_forever, 0.05)
+            try:
+                url = (
+                    f"http://synthetic-user:PRIVATE_URL_CREDENTIAL_SENTINEL@127.0.0.1:{server.server_port}"
+                    "/private-path/PRIVATE_URL_PATH_SENTINEL"
+                )
+                with httpx.Client(timeout=2, trust_env=False) as client:
+                    assert client.get(url).status_code == 200
+            finally:
+                server.shutdown()
+                running.result(timeout=5)
+    safe_sink = io.StringIO()
+    safe_handler = logging.StreamHandler(safe_sink)
+    logger.addHandler(safe_handler)
+    try:
+        with operation("privacy.control", stage="verify", inquiry="PRIVATE_INQUIRY_SENTINEL"):
+            pass
+    finally:
+        logger.removeHandler(safe_handler)
+    logging.getLogger("application.control").warning("root capture still enabled")
+    assert "root capture still enabled" in caplog.text
+    assert not any(
+        r.name == n or r.name.startswith(n + ".") for r in caplog.records for n in ("httpx", "httpcore")
+    )
+    assert not old_sink.getvalue()
+    assert json.loads(safe_sink.getvalue()) == {"event": "privacy.control", "stage": "verify"}
+    for private in (
+        "PRIVATE_RESPONSE_HEADER_SENTINEL",
+        "PRIVATE_URL_CREDENTIAL_SENTINEL",
+        "PRIVATE_URL_PATH_SENTINEL",
+        "PRIVATE_DESCENDANT_SENTINEL",
+        "PRIVATE_INQUIRY_SENTINEL",
+    ):
+        assert private not in caplog.text + old_sink.getvalue() + safe_sink.getvalue()
+
+
+def test_one_attempt_invalid_output_refuses_repair_before_second_physical_request(clients, monkeypatch):
+    client, remote = clients
+    monkeypatch.setenv("LLM_MAX_ATTEMPTS", "1")
+    run_id = client.post("/api/intake", json={"lead": lead(scenario="invalid")}).json()["run_id"]
+    result = client.post(f"/api/runs/{run_id}/qualify").json()
+    assert result["status"] == "manual_review"
+    assert result["manual_reason"] == "llm_budget_exhausted"
+    assert result["llm_usage"]["physical_attempts"] == 1
+    assert remote.get("/state").json()["llm"][0]["attempts"] == 1
+    for step in ("crm", "slots", "offer-email"):
+        assert client.post(f"/api/runs/{run_id}/{step}").json()["status"] == "manual_review"
+    state = remote.get("/state").json()
+    assert all(not state[kind] for kind in ("contacts", "deals", "events", "mail"))

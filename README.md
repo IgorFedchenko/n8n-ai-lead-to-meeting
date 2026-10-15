@@ -15,6 +15,8 @@ synthetic. No employer/client code or data is included.
 
 ![Running synthetic local demo](docs/images/demo.png)
 
+[Watch the synthetic workflow demo](docs/images/demo.gif).
+
 [Recorded booking](docs/images/booked.png) · [Reproduce verification](docs/VERIFICATION.md)
 
 ```mermaid
@@ -104,8 +106,9 @@ compose.yaml   n8n + Postgres + adapter service + doubles + local IMAP/SMTP
 - **Warnings:** separate error workflow, zero-write checks, stalled-run monitoring and a durable
   alert outbox. Live notifications use Telegram; local mode captures them without contacting anyone.
 - **Privacy:** webhook authentication, service authentication, no attachments, bounded input lengths,
-  plain-text emails, prompt inputs treated as data, no provider bodies in alerts, no n8n execution
-  payload persistence. Seven-day cleanup covers safe terminal runs only; active/uncertain/manual
+  plain-text emails, prompt inputs treated as data, no provider bodies in alerts, no completed production-webhook/IMAP/scheduled n8n execution
+  payload persistence. Editor/manual retention is unverified and may retain payloads; use only
+  synthetic data there and erase local volumes after experiments. Seven-day cleanup covers safe terminal runs only; active/uncertain/manual
   and undelivered-alert records remain until resolved. See [operator procedures](docs/OPERATIONS.md).
 
 ## Connect real services

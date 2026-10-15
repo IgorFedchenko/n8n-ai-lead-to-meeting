@@ -6,9 +6,15 @@ Structured events use the same allowlist. Exception messages/tracebacks are not 
 No automatic HTTP instrumentation captures paths or query strings; prompts, completions, inquiry
 text, email/phone, credentials, authorization headers and booking tokens are never attributes.
 Schema-validation responses omit rejected input, and third-party HTTP URL logging is disabled.
-n8n saves neither successful nor failed payloads; pruning is disabled so its `save=none` lifecycle
+For production webhook, IMAP and scheduled executions, n8n saves neither successful nor failed
+payloads; pruning is disabled so its `save=none` lifecycle
 hard-deletes completed execution data immediately instead of retaining soft-deleted copies until
 a pruning cycle. In-flight n8n payloads are temporary private operational data during execution.
+This guarantee is tested only for those automated production modes. Editor/manual executions are
+untested and have a separate soft-delete lifecycle that may retain payloads with this configuration.
+Use synthetic data only in the local editor, and remove the local stack volumes after experiments
+(`docker compose --profile observability down -v`, intentionally erasing all local synthetic state).
+Do not treat the editor as a verified private live-data debugging environment.
 `traceparent` propagates from application spans to LLM requests; baggage is not forwarded.
 
 By default the SDK has no network exporter. Tests can attach an in-memory span exporter. To inspect
