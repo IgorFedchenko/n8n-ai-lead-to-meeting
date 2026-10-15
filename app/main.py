@@ -292,6 +292,7 @@ def offer_email(run_id: str):
 
 @app.post("/api/book", dependencies=[Depends(authorize)])
 def book(body: Booking):
+    failure = None
     with transaction() as session:
         run = get_run(session, body.run_id)
         data = dict(run.data)
@@ -301,17 +302,33 @@ def book(body: Booking):
             if body.slot != data["booked_slot"]:
                 raise HTTPException(409, "A meeting is already booked")
             return result(run)
-        if data["status"] != "offered" or body.slot not in data.get("slots", []):
+        retrying_booking = data["status"] == "failed" and data.get("failed_step") == "book"
+        if (data["status"] != "offered" and not retrying_booking) or body.slot not in data.get("slots", []):
             raise HTTPException(409, "Slot was not offered")
         if parse_time(body.slot) <= datetime.now(UTC) or (
             datetime.now(UTC) - parse_time(data["offered_at"]) > timedelta(days=7)
         ):
             raise HTTPException(410, "Offer expired")
         # A deterministic remote ID and the transaction lock protect concurrent/redelivered bookings.
-        event_id = providers.book(body.run_id, body.slot)
-        data.update(booked_slot=body.slot, event_id=event_id, status="booked", done=data["done"] + ["book"])
-        save(session, run, data, "calendar_booked")
-        return result(run)
+        try:
+            event_id = providers.book(body.run_id, body.slot)
+            data.update(
+                booked_slot=body.slot, event_id=event_id, status="booked", done=data["done"] + ["book"]
+            )
+            data.pop("failed_step", None)
+            data.pop("error", None)
+            save(session, run, data, "calendar_booked")
+        except (IntegrationError, Retryable) as error:
+            data.update(status="failed", failed_step="book", error=type(error).__name__)
+            save(session, run, data, "book_failed")
+            alert(session, run.id, "book_failed")
+            failure = HTTPException(
+                503 if isinstance(error, Retryable) else 502, "Booking integration failed"
+            )
+        response = result(run)
+    if failure:
+        raise failure
+    return response
 
 
 @app.post("/api/runs/{run_id}/confirmation-email", dependencies=[Depends(authorize)])

@@ -12,9 +12,11 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import create_engine
 
 from app import db, llm_budget
+from app.models import Lead
 from app.providers import IntegrationError, Providers, Retryable
 from app.qualification import (
     PROMPT_HASH,
@@ -24,6 +26,7 @@ from app.qualification import (
     usage_hook,
     validate_response,
 )
+from evals.outcomes import aggregate, select_rows
 
 
 def arguments(description: str) -> argparse.ArgumentParser:
@@ -39,6 +42,9 @@ def arguments(description: str) -> argparse.ArgumentParser:
         "--ledger", type=Path, required=True, help="Persistent private SQLite admission ledger"
     )
     parser.add_argument("--output", type=Path, required=True, help="Private result path")
+    parser.add_argument(
+        "--case-id", action="append", help="Explicit partial coverage; repeat to select case IDs"
+    )
     return parser
 
 
@@ -117,40 +123,69 @@ def private_write(path: Path, report: dict[str, Any]) -> None:
         json.dump(report, stream, indent=2)
 
 
-def main() -> None:
+class GenerationCase(BaseModel):
+    model_config = ConfigDict(strict=True, extra="ignore")
+    id: str
+    input: Lead
+
+
+def evaluate(args: Any) -> dict[str, Any]:
+    report: dict[str, Any] = {
+        "origin": "live",
+        "model": args.model,
+        "prompt_hash": PROMPT_HASH,
+        "partial": args.case_id is not None,
+        "results": [],
+    }
+    try:
+        rows = json.loads(args.dataset.read_text())
+        selected = select_rows(rows, args.case_id)
+        report.update(
+            source_count=len(rows),
+            required_count=len(selected),
+            dataset_hash=hashlib.sha256(args.dataset.read_bytes()).hexdigest(),
+        )
+        cases = [GenerationCase.model_validate(row) for row in selected]
+        with metered(args) as (adapter, run_id):
+            for case in cases:
+                outcome: dict[str, Any] = {
+                    "id": case.id,
+                    "inquiry": case.input.message,
+                    "origin": "live",
+                    "passed": False,
+                    "evaluated": False,
+                }
+                try:
+                    for _repair in range(2):
+                        raw = adapter.qualify(case.input.model_dump())
+                        outcome["evaluated"] = True
+                        try:
+                            outcome["qualification"] = validate_response(raw).model_dump()
+                            outcome.update(status="qualified", passed=True)
+                            break
+                        except ValueError:
+                            outcome["status"] = "invalid_output"
+                except (ValueError, RuntimeError, IntegrationError, Retryable) as error:
+                    outcome["status"] = type(error).__name__
+                report["results"].append(outcome)
+            with db.transaction() as session:
+                report["usage"] = llm_budget.summary(session, run_id)
+    except (ValueError, OSError, RuntimeError, IntegrationError, Retryable) as error:
+        report["error"] = type(error).__name__
+    report.update(aggregate(report))
+    return report
+
+
+def main(argv: list[str] | None = None) -> None:
     parser = arguments(__doc__ or "Live evaluation")
     parser.add_argument("--dataset", type=Path, default=Path("evals/cases.json"))
-    args = parser.parse_args()
-    cases = json.loads(args.dataset.read_text())[: args.max_calls]
-    results = []
-    with metered(args) as (adapter, run_id):
-        for case in cases:
-            outcome = {"id": case["id"], "inquiry": case["input"]["message"], "origin": "live"}
-            try:
-                for _repair in range(2):
-                    raw = adapter.qualify(case["input"])
-                    try:
-                        outcome["qualification"] = validate_response(raw).model_dump()
-                        outcome["status"] = "qualified"
-                        break
-                    except ValueError:
-                        outcome["status"] = "invalid_output"
-            except (ValueError, RuntimeError, IntegrationError, Retryable) as error:
-                outcome["status"] = type(error).__name__  # No provider body/URL in diagnostics.
-            results.append(outcome)
-        with db.transaction() as session:
-            usage = llm_budget.summary(session, run_id)
-    private_write(
-        args.output,
-        {
-            "origin": "live",
-            "model": args.model,
-            "prompt_hash": PROMPT_HASH,
-            "dataset_hash": hashlib.sha256(args.dataset.read_bytes()).hexdigest(),
-            "usage": usage,
-            "results": results,
-        },
+    args = parser.parse_args(argv)
+    report = evaluate(args)
+    private_write(args.output, report)
+    print(
+        json.dumps({key: report[key] for key in ("status", "required_count", "result_count", "passed_count")})
     )
+    raise SystemExit(0 if report["status"] in {"PASS", "PASS_PARTIAL"} else 1)
 
 
 if __name__ == "__main__":

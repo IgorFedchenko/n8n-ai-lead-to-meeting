@@ -295,3 +295,54 @@ def test_durable_cap_counts_transient_attempt_before_any_retry(clients, monkeypa
     client.post(f"/api/runs/{run_id}/qualify")
     state = remote.get("/state").json()
     assert state["llm"][0]["attempts"] == 1
+
+
+@pytest.mark.parametrize("malformed", [{"results": None}, {"results": [{"id": None}]}, {"results": "wrong"}])
+def test_malformed_crm_search_fails_durably_and_corrected_retry_resumes(clients, monkeypatch, malformed):
+    import httpx
+
+    client, remote = clients
+    run_id = client.post("/api/intake", json={"lead": lead()}).json()["run_id"]
+    assert client.post(f"/api/runs/{run_id}/qualify").status_code == 200
+    original = main.providers.request
+
+    def malformed_search(method, url, **kwargs):
+        if url.endswith("/contacts/search"):
+            return httpx.Response(200, json=malformed)
+        return original(method, url, **kwargs)
+
+    monkeypatch.setattr(main.providers, "request", malformed_search)
+    assert client.post(f"/api/runs/{run_id}/crm").status_code == 502
+    state = client.get("/api/state").json()
+    assert state["runs"][0]["status"] == "failed"
+    assert state["runs"][0]["failed_step"] == "crm"
+    assert state["alerts"] == [{"run_id": run_id, "reason": "crm_failed", "delivered": False}]
+    assert not remote.get("/state").json()["contacts"]
+    assert not remote.get("/state").json()["deals"]
+    monkeypatch.setattr(main.providers, "request", original)
+    assert client.post(f"/api/runs/{run_id}/crm").status_code == 200
+    assert len(remote.get("/state").json()["deals"]) == 1
+
+
+def test_malformed_calendar_event_fails_durably_and_reconciles_on_retry(clients, monkeypatch):
+    import httpx
+
+    client, remote = clients
+    run = pipeline(client)
+    body = {"run_id": run["run_id"], "token": run["booking_token"], "slot": run["slots"][0]}
+    original = main.providers.request
+
+    def malformed_ack(method, url, **kwargs):
+        response = original(method, url, **kwargs)
+        if method == "POST" and url.endswith("/events"):
+            return httpx.Response(200, json={"id": None, "start": None})
+        return response
+
+    monkeypatch.setattr(main.providers, "request", malformed_ack)
+    assert client.post("/api/book", json=body).status_code == 502
+    state = client.get("/api/state").json()
+    assert state["runs"][0]["failed_step"] == "book"
+    assert any(item["reason"] == "book_failed" and not item["delivered"] for item in state["alerts"])
+    monkeypatch.setattr(main.providers, "request", original)
+    assert client.post("/api/book", json=body).status_code == 200
+    assert len(remote.get("/state").json()["events"]) == 1

@@ -1,11 +1,129 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>Choose your discovery meeting</title>
-<style>body{font:16px system-ui,sans-serif;background:#101725;color:#e7edf8;margin:0;padding:48px 24px}main{max-width:620px;margin:auto;padding:28px;background:#182235;border-radius:14px}h1{font-size:26px}p{color:#b9c9e0;line-height:1.6}.slot{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:15px 0;border-bottom:1px solid #34435b}button{background:#77e0bf;color:#10251f;border:0;border-radius:7px;padding:12px 16px;font-weight:700;cursor:pointer}button:disabled{opacity:.5}</style>
-</head><body><main><h1>Choose a discovery meeting</h1><p>Select a 30-minute slot. All times are shown in UTC. Your offer is valid for seven days.</p><div id="slots"></div><p id="status" role="status">Loading your offer…</p></main><script>
-const run=new URLSearchParams(location.search).get('run');
-const token=new URLSearchParams(location.hash.slice(1)).get('token');
-const status=document.getElementById('status'),slots=document.getElementById('slots');
-async function load(){if(!run||!token)throw new Error('Open the complete private link from your invitation email.');const r=await fetch('/public/offer?run_id='+encodeURIComponent(run),{headers:{'X-Booking-Token':token},cache:'no-store'});if(!r.ok)throw new Error('The offer is unavailable or has expired. Contact the organizer.');const offer=await r.json();if(offer.booked_slot){status.textContent='Your meeting is booked for '+offer.booked_slot+' UTC.';return;}if(offer.status!=='offered')throw new Error('This offer requires organizer review.');for(const slot of offer.slots){const row=document.createElement('div');row.className='slot';const label=document.createElement('span');label.textContent=slot.slice(0,16).replace('T',' ')+' UTC';const button=document.createElement('button');button.textContent='Book this slot';button.onclick=async()=>{button.disabled=true;status.textContent='Reserving your meeting…';try{const result=await fetch('/public/book',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({run_id:run,token,slot})});if(!result.ok)throw new Error('This slot could not be confirmed. Try another offered slot or contact the organizer.');const outcome=await result.json();slots.replaceChildren();status.textContent=outcome.status==='completed'?'Meeting confirmed. Your email confirmation has been sent.':'Meeting reserved. The organizer will check confirmation delivery.';}catch(e){status.textContent=e.message;button.disabled=false;}};row.append(label,button);slots.append(row);}status.textContent='Choose one of the available times above.';}
-load().catch(e=>status.textContent=e.message);
-</script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Choose your discovery meeting</title>
+    <style>
+      body {
+        font:
+          16px system-ui,
+          sans-serif;
+        background: #101725;
+        color: #e7edf8;
+        margin: 0;
+        padding: 48px 24px;
+      }
+      main {
+        max-width: 620px;
+        margin: auto;
+        padding: 28px;
+        background: #182235;
+        border-radius: 14px;
+      }
+      h1 {
+        font-size: 26px;
+      }
+      p {
+        color: #b9c9e0;
+        line-height: 1.6;
+      }
+      .slot {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        padding: 15px 0;
+        border-bottom: 1px solid #34435b;
+      }
+      button {
+        background: #77e0bf;
+        color: #10251f;
+        border: 0;
+        border-radius: 7px;
+        padding: 12px 16px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Choose a discovery meeting</h1>
+      <p>
+        Select a 30-minute slot. All times are shown in UTC. Your offer is valid
+        for seven days.
+      </p>
+      <div id="slots"></div>
+      <p id="status" role="status">Loading your offer…</p>
+    </main>
+    <script>
+      const run = new URLSearchParams(location.search).get("run");
+      const token = new URLSearchParams(location.hash.slice(1)).get("token");
+      const status = document.getElementById("status"),
+        slots = document.getElementById("slots");
+      async function load() {
+        if (!run || !token)
+          throw new Error(
+            "Open the complete private link from your invitation email.",
+          );
+        const r = await fetch(
+          "/public/offer?run_id=" + encodeURIComponent(run),
+          { headers: { "X-Booking-Token": token }, cache: "no-store" },
+        );
+        if (!r.ok)
+          throw new Error(
+            "The offer is unavailable or has expired. Contact the organizer.",
+          );
+        const offer = await r.json();
+        if (offer.booked_slot) {
+          status.textContent =
+            "Your meeting is booked for " + offer.booked_slot + " UTC.";
+          return;
+        }
+        if (offer.status !== "offered")
+          throw new Error("This offer requires organizer review.");
+        for (const slot of offer.slots) {
+          const row = document.createElement("div");
+          row.className = "slot";
+          const label = document.createElement("span");
+          label.textContent = slot.slice(0, 16).replace("T", " ") + " UTC";
+          const button = document.createElement("button");
+          button.textContent = "Book this slot";
+          button.onclick = async () => {
+            button.disabled = true;
+            status.textContent = "Reserving your meeting…";
+            try {
+              const result = await fetch("/public/book", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ run_id: run, token, slot }),
+              });
+              if (!result.ok)
+                throw new Error(
+                  "This slot could not be confirmed. Try another offered slot or contact the organizer.",
+                );
+              const outcome = await result.json();
+              slots.replaceChildren();
+              status.textContent =
+                outcome.status === "completed"
+                  ? "Meeting confirmed. Your email confirmation has been sent."
+                  : "Meeting reserved. The organizer will check confirmation delivery.";
+            } catch (e) {
+              status.textContent = e.message;
+              button.disabled = false;
+            }
+          };
+          row.append(label, button);
+          slots.append(row);
+        }
+        status.textContent = "Choose one of the available times above.";
+      }
+      load().catch((e) => (status.textContent = e.message));
+    </script>
+  </body>
+</html>

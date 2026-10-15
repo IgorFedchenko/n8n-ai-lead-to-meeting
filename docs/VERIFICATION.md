@@ -8,6 +8,7 @@ into a Python 3.12 virtualenv. CI commands are visible in `.github/workflows/ci.
 .venv/bin/ruff format --check app tests scripts evals
 .venv/bin/mypy app evals
 .venv/bin/bandit -r app evals -q
+.venv/bin/python scripts/audit_dependencies.py
 .venv/bin/python scripts/scan_secrets.py
 .venv/bin/pytest -q
 .venv/bin/python -m evals.run --offline --output artifacts/evals.json
@@ -44,3 +45,9 @@ verification record. No live quality score is implied by a synthetic replay pass
 
 CodeQL runs only when the repository is public. Private paid Code Security/native secret-scanning
 entitlements are unavailable for this reference; Bandit and detect-secrets run without those products.
+
+The pinned free `pip-audit` command checks both complete committed locks against public PyPI
+advisories. It performs advisory lookup only (`--no-deps --disable-pip`); it neither installs nor
+fixes packages. Findings, lookup failures and tool errors fail CI. JSON reports are uploaded under
+`dependency-audit/`. A successful audit means no known advisories at the query time, not a guarantee
+that dependencies have no vulnerabilities. No advisories are suppressed.

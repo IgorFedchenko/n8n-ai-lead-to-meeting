@@ -47,12 +47,6 @@ cd n8n-ai-lead-to-meeting
 ./scripts/demo.sh
 ```
 
-On the Studio host, use its shared queue:
-
-```sh
-~/.local/bin/studio-heavy-run -- ./scripts/demo.sh
-```
-
 Open **http://localhost:8088**. Send an inquiry, click **Replay** to check deduplication, and
 book one of the displayed slots. Inspect CRM counts, structured qualification, run journal
 and captured email/warning delivery. Choose the invalid-response scenario to see manual review.
@@ -64,14 +58,12 @@ by the bootstrap container. Workflow `04` is an error handler and is invoked by 
 
 `demo.sh` creates an ignored `.env` with random local service/webhook/database secrets (mode 0600).
 Only loopback ports are published. Postgres, IMAP and provider doubles stay on the Docker network.
+On a resource-constrained or shared host, run Docker/browser jobs through its resource queue.
 The first launch downloads images and installs pinned Python packages. Startup may take several minutes.
 
 ```sh
 # Actual n8n + Postgres + IMAP acceptance, with concurrent replay and negative controls:
 python3 scripts/verify_demo.py
-
-# Studio equivalent:
-~/.local/bin/studio-heavy-run -- python3 scripts/verify_demo.py
 
 # Stop containers; keep the local database:
 docker compose down
@@ -159,7 +151,7 @@ commands are gated by explicit approval, credentials and durable call/cost limit
 metadata only. Default execution makes no telemetry network calls. Prompt text, response text,
 contacts, booking tokens, headers and query strings are excluded from spans and structured events.
 
-CI runs lint/format, mypy, tests, synthetic replay, Bandit and a local secret scanner. Dependabot
+CI runs lint/format, mypy, tests, synthetic replay, a locked-dependency vulnerability audit, Bandit and a local secret scanner. Dependabot
 covers Python, Actions and Docker. CodeQL is guarded to public repositories; private paid Code
 Security/native secret-scanning entitlements are not enabled or claimed. See [verification](docs/VERIFICATION.md)
 and [architecture decisions](docs/adr/README.md).

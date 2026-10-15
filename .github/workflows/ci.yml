@@ -20,6 +20,7 @@ jobs:
       - run: ruff format --check app tests scripts evals
       - run: mypy app evals
       - run: bandit -r app evals -q
+      - run: python scripts/audit_dependencies.py
       - run: python scripts/scan_secrets.py
       - run: pytest -q --junitxml=artifacts/tests.xml
       - run: python -m evals.run --offline --output artifacts/evals.json
@@ -28,6 +29,7 @@ jobs:
         with:
           name: fast-checks
           path: |
+            artifacts/dependency-audit/
             artifacts/tests.xml
             artifacts/evals.json
       - run: python scripts/generate_workflows.py && git diff --exit-code workflows

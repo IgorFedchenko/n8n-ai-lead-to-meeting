@@ -90,7 +90,9 @@ def test_google_oauth_freebusy_and_deterministic_event(monkeypatch, respx_mock):
     )
     base = "https://www.googleapis.com/calendar/v3/calendars/calendar%40example.test/events"
     respx_mock.get(url__regex=base + "/[a-f0-9]+").mock(return_value=httpx.Response(404, json={}))
-    insert = respx_mock.post(base).mock(return_value=httpx.Response(200, json={"id": "synthetic-event"}))
+    insert = respx_mock.post(base).mock(
+        side_effect=lambda request: httpx.Response(200, json=json.loads(request.content))
+    )
     adapter = Providers()
     try:
         slot = "2099-01-01T12:00:00+00:00"

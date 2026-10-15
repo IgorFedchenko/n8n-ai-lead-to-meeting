@@ -7,13 +7,22 @@ import time
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from functools import cached_property
-from typing import Any
+from typing import Any, TypeVar
 from urllib.parse import quote
 
 import httpx
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from pydantic import BaseModel, ValidationError
 
 from app.models import Qualification
+from app.provider_contracts import (
+    AccessToken,
+    AvailabilityResponse,
+    CalendarEvent,
+    ObjectReference,
+    SearchResults,
+    instant,
+)
 from app.qualification import SYSTEM_PROMPT, attempt_hooks, output_limit, usage_hook
 from app.telemetry import operation
 
@@ -24,6 +33,9 @@ class Retryable(Exception):
 
 class IntegrationError(Exception):
     pass
+
+
+Payload = TypeVar("Payload", bound=BaseModel)
 
 
 class Providers:
@@ -108,6 +120,28 @@ class Providers:
         if not isinstance(body, dict):
             raise IntegrationError("Remote service returned an invalid envelope")
         return body
+
+    def validated(self, response: httpx.Response, schema: type[Payload]) -> Payload:
+        try:
+            return schema.model_validate(self.checked(response))
+        except ValidationError:
+            raise IntegrationError("Remote service returned invalid structured data") from None
+
+    def object_id(self, response: httpx.Response, expected: str | None = None) -> str:
+        identifier = self.validated(response, ObjectReference).id
+        if expected is not None and identifier != expected:
+            raise IntegrationError("Remote service returned an inconsistent identifier")
+        return identifier
+
+    def verified_event(self, response: httpx.Response, expected_id: str, slot: str) -> CalendarEvent:
+        event = self.validated(response, CalendarEvent)
+        if (
+            event.id != expected_id
+            or instant(event.start.dateTime) != parse_time(slot)
+            or instant(event.end.dateTime) != parse_time(end_of(slot))
+        ):
+            raise IntegrationError("Calendar returned an inconsistent event")
+        return event
 
     def qualify(self, lead: dict[str, Any]) -> str:
         data = dict(lead)
@@ -201,7 +235,7 @@ class Providers:
         for field in ("email", "phone"):
             if not lead[field]:
                 continue
-            body = self.checked(
+            body = self.validated(
                 self.request(
                     "POST",
                     f"{self.crm_base}/crm/v3/objects/contacts/search",
@@ -212,23 +246,25 @@ class Providers:
                         ],
                         "limit": 2,
                     },
-                )
+                ),
+                SearchResults,
             )
-            for item in body["results"]:
-                matches[item["id"]] = item
+            for item in body.results:
+                matches[item.id] = item
         if len(matches) > 1:
             raise IntegrationError("Email and phone identify conflicting contacts; manual review required")
         properties = {"email": lead["email"], "phone": lead["phone"], "firstname": lead["name"]}
         if matches:
             contact_id = next(iter(matches))
-            return self.checked(
+            return self.object_id(
                 self.request(
                     "PATCH",
                     f"{self.crm_base}/crm/v3/objects/contacts/{contact_id}",
                     headers=self.crm_headers,
                     json={"properties": properties},
-                )
-            )["id"]
+                ),
+                expected=contact_id,
+            )
         response = self.request(
             "POST",
             f"{self.crm_base}/crm/v3/objects/contacts",
@@ -237,15 +273,15 @@ class Providers:
         )
         if response.status_code == 409:
             # Email is a HubSpot unique identifier; recover an ambiguous successful create.
-            return self.checked(
+            return self.object_id(
                 self.request(
                     "GET",
                     f"{self.crm_base}/crm/v3/objects/contacts/{quote(lead['email'], safe='')}",
                     params={"idProperty": "email"},
                     headers=self.crm_headers,
                 )
-            )["id"]
-        return self.checked(response)["id"]
+            )
+        return self.object_id(response)
 
     def deal(self, run_id, lead, qualification, contact_id):
         properties = {
@@ -274,26 +310,28 @@ class Providers:
                     headers=self.crm_headers,
                     params={"idProperty": "portfolio_request_id"},
                 )
-                recovered_id = self.checked(response)["id"]
+                recovered_id = self.object_id(response)
                 if not safe_amount:
                     properties["amount"] = ""
-                self.checked(
+                self.object_id(
                     self.request(
                         "PATCH",
                         f"{url}/{recovered_id}",
                         headers=self.crm_headers,
                         json={"properties": properties},
-                    )
+                    ),
+                    expected=recovered_id,
                 )
-            deal_id = self.checked(response)["id"]
+            deal_id = self.object_id(response)
         else:
-            deal_id = self.checked(lookup)["id"]
+            deal_id = self.object_id(lookup)
             if not safe_amount:
                 properties["amount"] = ""  # HubSpot clears property values with an empty string.
-            self.checked(
+            self.object_id(
                 self.request(
                     "PATCH", f"{url}/{deal_id}", headers=self.crm_headers, json={"properties": properties}
-                )
+                ),
+                expected=deal_id,
             )
         self.checked(
             self.request(
@@ -307,7 +345,7 @@ class Providers:
     def calendar_config(self):
         if self.mode == "mock":
             return self.mock_url + "/calendar/v3", "demo", {}
-        token = self.checked(
+        token = self.validated(
             self.request(
                 "POST",
                 "https://oauth2.googleapis.com/token",
@@ -317,8 +355,9 @@ class Providers:
                     "refresh_token": os.environ["GOOGLE_REFRESH_TOKEN"],
                     "grant_type": "refresh_token",
                 },
-            )
-        )["access_token"]
+            ),
+            AccessToken,
+        ).access_token
         return (
             "https://www.googleapis.com/calendar/v3",
             quote(os.environ["GOOGLE_CALENDAR_ID"], safe=""),
@@ -329,7 +368,7 @@ class Providers:
 
     def free(self, slots):
         base, calendar, headers = self.calendar_config()
-        body = self.checked(
+        body = self.validated(
             self.request(
                 "POST",
                 base + "/freeBusy",
@@ -339,17 +378,17 @@ class Providers:
                     "timeMax": end_of(slots[-1]),
                     "items": [{"id": os.getenv("GOOGLE_CALENDAR_ID", "demo")}],
                 },
-            )
+            ),
+            AvailabilityResponse,
         )
-        info = body["calendars"][os.getenv("GOOGLE_CALENDAR_ID", "demo")]
-        if info.get("errors"):
+        info = body.calendars.get(os.getenv("GOOGLE_CALENDAR_ID", "demo"))
+        if info is None or info.errors:
             raise IntegrationError("Calendar availability cannot be verified")
         return [
             s
             for s in slots
             if not any(
-                parse_time(s) < parse_time(b["end"]) and parse_time(end_of(s)) > parse_time(b["start"])
-                for b in info["busy"]
+                parse_time(s) < instant(b.end) and parse_time(end_of(s)) > instant(b.start) for b in info.busy
             )
         ]
 
@@ -359,9 +398,7 @@ class Providers:
         url = f"{base}/calendars/{calendar}/events"
         existing = self.request("GET", f"{url}/{event_id}", headers=headers)
         if existing.status_code != 404:
-            event = self.checked(existing)
-            if parse_time(event["start"]["dateTime"]) != parse_time(slot):
-                raise IntegrationError("A different slot is already reserved for this lead")
+            self.verified_event(existing, event_id, slot)
             return event_id
         if slot not in self.free([slot]):
             from fastapi import HTTPException
@@ -381,9 +418,8 @@ class Providers:
             },
         )
         if response.status_code == 409:
-            self.checked(self.request("GET", f"{url}/{event_id}", headers=headers))
-        else:
-            self.checked(response)
+            response = self.request("GET", f"{url}/{event_id}", headers=headers)
+        self.verified_event(response, event_id, slot)
         return event_id
 
     def email(self, key, recipient, subject, body):

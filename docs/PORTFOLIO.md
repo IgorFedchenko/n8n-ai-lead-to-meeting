@@ -1,4 +1,4 @@
-# Upwork portfolio draft
+# Portfolio example
 
 **Title (51 characters):** AI Lead Qualification & Meeting Automation with n8n
 
@@ -12,9 +12,3 @@ The local demo uses synthetic data and API mocks; live adapters are included for
 
 **Recent builds:** Built an n8n lead-to-meeting reference workflow with structured AI qualification,
 HubSpot upserts, Calendar booking and durable failure handling.
-
-Repository: https://github.com/IgorFedchenko/n8n-ai-lead-to-meeting
-
-Use the repository link only after owner review and publication. Attach `docs/images/demo.png`.
-No email address, phone number, messenger handle or other external contact information belongs
-in the portfolio entry.

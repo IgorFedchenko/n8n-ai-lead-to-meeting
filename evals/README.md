@@ -39,6 +39,15 @@ python -m evals.judge --approve-spend --provider anthropic --model APPROVED_JUDG
   --results PRIVATE_RESULTS.json --ledger PRIVATE_JUDGE_LEDGER.db --output PRIVATE_JUDGMENTS.json
 ```
 
+Commands evaluate all supplied cases by default; they never silently truncate to the call limit.
+A complete corpus may exceed a small approved call budget, which fails rather than claiming success.
+For an explicitly approved subset, repeat `--case-id E01 --case-id E02` (or provide a separate dataset).
+Subset reports identify the source/required counts and use `PASS_PARTIAL`, never a full-suite pass.
+Missing requested IDs, empty input, unsuccessful generation/admission/provider calls, missing judge
+qualifications or rubric failures produce `FAIL` and exit nonzero while retaining private per-case
+reports. Aggregate required/result/evaluated/passed/failed/missing counts are included. Generation
+success indicates structurally valid output only; subjective quality still needs separate assessment.
+
 Each invocation uses one persistent run ledger, caps physical calls at 1–12 including retries/repair,
 and commits conservative reservations before I/O. Exhaustion stops further I/O; ambiguous attempts
 consume reservations. Results/ledgers default to operator-supplied private paths. Do not commit them.
