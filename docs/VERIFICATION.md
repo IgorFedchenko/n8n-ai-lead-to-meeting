@@ -16,7 +16,8 @@ into a Python 3.12 virtualenv. CI commands are visible in `.github/workflows/ci.
 git diff --exit-code workflows
 ```
 
-The fast tests use SQLite and HTTP/SMTP protocol doubles. They do not establish real n8n,
+The fast tests use SQLite and HTTP protocol doubles; separate process tests use PostgreSQL
+and a loopback SMTP wire server. They do not establish real n8n,
 Postgres lock behavior, IMAP delivery or live provider compatibility. The synthetic eval runner
 injects raw HTTP completion responses through the actual qualification route and database accounting;
 it compares results to separate annotations, not fixture-to-fixture equality.
@@ -51,3 +52,52 @@ advisories. It performs advisory lookup only (`--no-deps --disable-pip`); it nei
 fixes packages. Findings, lookup failures and tool errors fail CI. JSON reports are uploaded under
 `dependency-audit/`. A successful audit means no known advisories at the query time, not a guarantee
 that dependencies have no vulnerabilities. No advisories are suppressed.
+
+## Coverage and command mapping
+
+The checks below exercise synthetic data. The actual boundary in the second column matters:
+HTTP doubles establish provider wire contracts, not a live service certification.
+
+| Contract | Executable check and boundary |
+|---|---|
+| Bootstrap, generated exports, loopback ports, restart | `scripts/demo.sh`, generator diff, `scripts/verify_demo.py`; real Docker/n8n/Postgres/GreenMail |
+| Intake identity and RFC Message-ID punctuation | `test_pipeline.py` identity tests; concurrent actual n8n redelivery and SMTP → GreenMail → n8n IMAP in `verify_demo.py` |
+| CRM identity, currency create/PATCH, malformed shapes, lost acknowledgement | `test_acceptance_contracts.py`; actual provider adapter HTTP requests into isolated doubles, recorded payload and resulting state assertions |
+| CRM process serialization | `test_postgres_contracts.py::test_two_process_crm_replay_one_contact_deal_and_association`; two app processes, real Postgres and loopback HTTP provider |
+| Qualification schema, repair, routing, limits | `test_pipeline.py`, `test_acceptance_contracts.py`, `evals.run`; actual parser/routes/accounting with synthetic raw HTTP responses |
+| Booking and recipient page | token/expiry/slot negatives in fast tests; real n8n booking and Chromium recipient-link navigation in `capture_demo.py` |
+| SMTP reservation ownership | PostgreSQL process tests pause a loopback SMTP server after DATA, race active duplicates, expire ownership, and release success/failure after reconciliation; one physical DATA per schedule |
+| Error workflow and independent monitor | `verify_demo.py`; actual n8n Error Trigger, scheduled stale-run discovery without direct monitor invocation, captured alert double |
+| Retained limits, admission before I/O, crash | PostgreSQL tests observe committed reservations from an independent connection at actual loopback HTTP arrival; lost acknowledgement + nested retry + repair + restarted caller; process exit after admission retains charge |
+| Usage and observability | exact/unknown usage PostgreSQL tests, in-memory span parentage/privacy; `verify_phoenix.py` configures the actual app and validates received run/child spans in real Phoenix |
+| Retention exceptions | fast and PostgreSQL tests retain active/uncertain/manual/pending-alert state and purge eligible old state |
+| Evals and tool failure controls | replay corruption, stale provenance, missing coverage and semantic-change negatives; real secret scanner clean/detected controls; mypy negative; dependency-audit finding/tool-error controls |
+
+Run database process contracts separately against a disposable PostgreSQL database:
+
+```sh
+TEST_POSTGRES_URL="$DISPOSABLE_DATABASE_URL" \
+  .venv/bin/pytest -q -m postgres --junitxml=artifacts/postgres.xml
+.venv/bin/pytest -q -m 'not postgres' --junitxml=artifacts/tests.xml
+```
+
+Each database test creates and removes its own schema. The database user must have schema creation
+permission. With no `TEST_POSTGRES_URL`, those tests explicitly skip locally; the dedicated CI
+`postgres` job always supplies it. A local skip is not evidence of database acceptance.
+The SMTP server in these tests is a minimal loopback test server; live TLS/authenticated SMTP
+compatibility remains unverified. A "not delivered" reconciliation fixture preserves uncertainty
+and never authorizes automatic resend; the documented operator command supports verified delivery only.
+
+The `acceptance` CI job builds the actual stack, runs `verify_demo.py`, installs Chromium, records
+`capture_demo.py`, converts that current video with FFmpeg, then starts optional Phoenix and runs
+`verify_phoenix.py`. Default startup does not start Phoenix. Its receipt includes trace/span IDs,
+parent IDs and counts, without raw prompts, completions, headers, contacts or booking URLs.
+Privacy checks cover the actual app/mock/n8n/bootstrap logs, Phoenix data, n8n `execution_data`
+and alert metadata, including malformed intake/schema errors. Synthetic operational state and
+mailbox bodies are intentionally private application data, not telemetry artifacts.
+
+`detect-secrets==1.5.0` is the free secret scanner used here. The reviewed baseline allows only exact
+synthetic/public fingerprints, including local CI database fixtures; it does not exclude directories.
+The positive control adds a deliberately nonfunctional credential-shaped value in an isolated Git
+repository and requires a nonzero scan exit, while an ordinary file must pass. CI records native
+private CodeQL/secret scanning as `SKIPPED_UNAVAILABLE`; free scans still must succeed.

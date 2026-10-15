@@ -14,5 +14,14 @@ with os.fdopen(fd, 'w') as stream:
     stream.write(data)
 PY
 fi
-docker compose up -d --build
+# Bound transient registry failures without hiding a failed pull or changing image versions.
+pull_attempt=1
+until docker compose pull --ignore-buildable; do
+  if [ "$pull_attempt" -ge 3 ]; then
+    exit 1
+  fi
+  sleep "$((pull_attempt * 2))"
+  pull_attempt="$((pull_attempt + 1))"
+done
+docker compose up -d --build --pull never
 python3 scripts/wait_ready.py

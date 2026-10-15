@@ -435,3 +435,43 @@ def test_actual_span_parentage_accounting_metadata_and_all_private_surfaces(clie
     serialized = json.dumps([s.to_json() for s in spans])
     for private in (payload["name"], payload["email"], payload["message"], run["booking_token"]):
         assert private not in serialized
+
+
+@pytest.mark.parametrize("kind", ["contacts", "deals"])
+def test_lost_crm_create_ack_recovers_remote_unique_identity(clients, monkeypatch, kind):
+    client, remote = clients
+    original = main.providers.client.request
+    dropped = []
+
+    def lost_ack(method, url, **kwargs):
+        response = original(method, url, **kwargs)
+        if method == "POST" and str(url).endswith("/objects/" + kind) and not dropped:
+            dropped.append(True)
+            raise httpx.ReadError("synthetic acknowledgement lost")
+        return response
+
+    monkeypatch.setattr(main.providers.client, "request", lost_ack)
+    run = pipeline(client)
+    assert run["status"] == "offered" and len(dropped) == 1
+    state = remote.get("/state").json()
+    assert [len(state[k]) for k in ("contacts", "deals", "associations")] == [1, 1, 1]
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("LLM_MAX_ATTEMPTS", "0"),
+        ("LLM_MAX_ATTEMPTS", "13"),
+        ("LLM_MAX_INPUT_BYTES", "1"),
+        ("LLM_MAX_OUTPUT_TOKENS", "0"),
+        ("LLM_MAX_OUTPUT_TOKENS", "4001"),
+    ],
+)
+def test_hard_bounds_fail_before_physical_io(clients, monkeypatch, name, value):
+    client, remote = clients
+    monkeypatch.setenv(name, value)
+    run_id = client.post("/api/intake", json={"lead": lead()}).json()["run_id"]
+    result = client.post(f"/api/runs/{run_id}/qualify").json()
+    assert result["status"] == "manual_review"
+    assert result["llm_usage"]["physical_attempts"] == 0
+    assert remote.get("/state").json()["llm"] == []
