@@ -36,10 +36,27 @@ def main():
         )
         expect(page.locator("#slots")).to_contain_text("Meeting confirmed:")
         page.screenshot(path=str(image_dir / "booked.png"), full_page=True)
+        # Follow the actual invitation email as a recipient, without the synthetic dashboard.
+        page.get_by_role("button", name="Run workflow", exact=True).click()
+        expect(page.locator("#notice")).to_have_text("Workflow finished. CRM state verified.", timeout=120000)
+        run_id = page.evaluate("lastRun.id || lastRun.run_id")
+        mail = page.request.get(os.getenv("DEMO_URL", "http://localhost:8088") + "/demo/mock").json()["mail"]
+        invitation = next(item for item in mail if item["key"] == "offer:" + run_id)
+        private_url = invitation["body"].split("\nBook: ", 1)[1].strip()
+        recipient = context.new_page()
+        recipient.on("pageerror", lambda error: errors.append(str(error)))
+        recipient.goto(private_url)
+        expect(recipient.get_by_role("button", name="Book this slot")).to_have_count(3)
+        recipient.screenshot(path=str(image_dir / "booking.png"), full_page=True)
+        recipient.get_by_role("button", name="Book this slot").first.click()
+        expect(recipient.locator("#status")).to_have_text(
+            "Meeting confirmed. Your email confirmation has been sent.",
+            timeout=120000,
+        )
         assert not errors, errors
         context.close()
         browser.close()
-    print("PASS: browser form, replay, booking and screenshots; no JavaScript errors")
+    print("PASS: browser form, replay, booking, private email link and screenshots; no JavaScript errors")
 
 
 if __name__ == "__main__":

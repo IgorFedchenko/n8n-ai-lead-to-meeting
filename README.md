@@ -13,6 +13,8 @@ synthetic. No employer/client code or data is included.
 
 ![Running demo](docs/images/demo.png)
 
+[Recorded booking](docs/images/booked.png) · [Verification evidence and CI recording](docs/VERIFICATION.md)
+
 ```mermaid
 flowchart LR
     F[Web form / authenticated webhook] --> N[n8n intake workflow]
@@ -129,7 +131,8 @@ python3 -m venv .venv
 
 GitHub Actions runs the unit/contract tests, checks generated exports, then starts the actual
 Compose stack and verifies webhooks, Postgres state, IMAP delivery, redelivery, booking, manual
-review, rate limiting and the separate error workflow. Successful acceptance produces a JSON
+review, rate limiting and the separate error workflow. A Chromium run checks the form, replay,
+booking and the private recipient link from the captured invitation email. Successful acceptance produces a JSON
 receipt as a CI artifact; it contains identifiers and check names, with no inquiry bodies or secrets.
 
 ## Boundaries
