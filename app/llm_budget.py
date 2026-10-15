@@ -136,6 +136,7 @@ def record(identity: str, status: str, usage: dict[str, Any] | None, elapsed: fl
                     "status",
                     "prompt_version",
                     "prompt_hash",
+                    "schema_hash",
                     "model",
                     "provider",
                     "input_tokens",

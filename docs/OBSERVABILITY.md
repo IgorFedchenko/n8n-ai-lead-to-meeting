@@ -19,8 +19,10 @@ docker compose up -d --force-recreate app
 python scripts/verify_phoenix.py
 ```
 
-Run heavy Docker/browser operations through your host's queue. `verify_phoenix.py` sends an actual
-OTLP HTTP span, flushes it and polls the local Phoenix spans endpoint for ingestion, writing
+Run heavy Docker/browser operations through your host's queue. `verify_phoenix.py` configures the application exporter, recreates the application, submits an
+actual n8n inquiry and polls Phoenix for its correlated run/qualification/LLM spans, checking
+trace IDs and parentage. It also probes malformed intake and checks container logs, n8n stored
+execution data, spans and alert metadata for synthetic privacy sentinels, writing
 `artifacts/phoenix.json`. Merely creating a span or starting Phoenix is insufficient evidence.
 This optional integration must be checked separately from in-memory tracing; no cloud account is
 used. Only localhost/127.0.0.1/phoenix exporter hosts without credentials/query are accepted.

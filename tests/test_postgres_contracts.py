@@ -285,3 +285,226 @@ def test_smtp_physical_send_owner_cas_across_processes(postgres, monkeypatch, la
     # A new invocation after the sender exited cannot resend retained sent/ambiguous delivery.
     monkeypatch.setattr(main.providers, "email", lambda *args: pytest.fail("unexpected second physical send"))
     main.send_email(run_id, "offer")
+
+
+def qualification_worker(url, schema, run_id, port, results):
+    from app.providers import Providers
+
+    db.engine = connect(url, schema)
+    os.environ.update(
+        budget_environment(),
+        INTEGRATION_MODE="live",
+        LLM_PROVIDER="openai-compatible",
+        LLM_BASE_URL=f"http://127.0.0.1:{port}/v1",
+        RETRY_DELAY_SCALE="0",
+    )
+    main.providers = Providers()
+    try:
+        results.put(main.qualify(run_id))
+    finally:
+        main.providers.client.close()
+        db.engine.dispose()
+
+
+def crash_after_admission(url, schema, run_id):
+    db.engine = connect(url, schema)
+    os.environ.update(budget_environment())
+    llm_budget.admit(run_id, "live", "qualification-owner")
+    os._exit(17)
+
+
+def test_crash_after_admission_retains_stranded_charge(postgres):
+    run_id = seeded()
+    worker = CTX.Process(target=crash_after_admission, args=(*postgres, run_id))
+    worker.start()
+    worker.join(15)
+    assert worker.exitcode == 17
+    with db.transaction() as session:
+        usage = llm_budget.summary(session, run_id)
+        assert usage["physical_attempts"] == 1
+        assert usage["attempts"][0]["status"] == "reserved"
+        assert float(usage["reserved_usd"]) == 0.04
+    assert race_admissions(postgres, [run_id, run_id]).count("denied") == 1
+    assert race_admissions(postgres, [run_id]) == ["denied"]
+
+
+def test_actual_http_nested_retry_repair_replay_cannot_multiply_budget(postgres):
+    import json
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    run_id = seeded()
+    with db.transaction() as session:
+        run = db.get_run(session, run_id)
+        data = {**run.data, "status": "received", "done": []}
+        data.pop("qualification_operation")
+        db.save(session, run, data, "ready")
+    physical_attempts = []
+
+    class LLM(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            with Session(connect(*postgres)) as observer:
+                attempts = list(observer.scalars(select(db.LLMAttempt).where(db.LLMAttempt.run_id == run_id)))
+                # Independent connection proves each reservation committed BEFORE physical HTTP arrival.
+                physical_attempts.append(len(attempts))
+                assert len(attempts) == len(physical_attempts)
+                assert attempts[-1].data["reserved_usd"] == "0.04"
+            if len(physical_attempts) == 1:
+                # Lost acknowledgement after request receipt: ambiguous reservation is not refunded.
+                self.close_connection = True
+                return
+            raw = json.dumps({"choices": [{"message": {"content": "malformed qualification"}}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), LLM) as server:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            serving = pool.submit(server.serve_forever, 0.05)
+            try:
+                for _ in range(2):
+                    results = CTX.Queue()
+                    worker = CTX.Process(
+                        target=qualification_worker,
+                        args=(*postgres, run_id, server.server_address[1], results),
+                    )
+                    worker.start()
+                    result = results.get(timeout=15)
+                    worker.join(15)
+                    assert worker.exitcode == 0
+                    assert result["manual_reason"] == "llm_budget_exhausted"
+            finally:
+                server.shutdown()
+                serving.result(timeout=5)
+    assert physical_attempts == [1, 2]
+    with db.transaction() as session:
+        usage = llm_budget.summary(session, run_id)
+        assert usage["physical_attempts"] == 2 and float(usage["reserved_usd"]) == 0.08
+        assert [a["status"] for a in usage["attempts"]] == ["ambiguous", "response"]
+
+
+def provider_server(url, schema, channel):
+    import uvicorn
+
+    from app import mock
+
+    mock.engine = connect(url, schema)
+    # Bind in this process before publishing readiness; no port-selection race.
+    import socket
+
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(20)
+    channel.send(listener.getsockname()[1])
+    uvicorn.Server(uvicorn.Config(mock.app, log_level="error", access_log=False)).run(sockets=[listener])
+
+
+def crm_worker(url, schema, port, run_id, ready, start, results):
+    from app.providers import Providers
+
+    db.engine = connect(url, schema)
+    main.providers = Providers()
+    main.providers.mode = "mock"
+    main.providers.mock_url = f"http://127.0.0.1:{port}"
+    ready.put(True)
+    assert start.wait(10)
+    try:
+        results.put(main.crm(run_id))
+    finally:
+        main.providers.client.close()
+        db.engine.dispose()
+
+
+def test_two_process_crm_replay_one_contact_deal_and_association(postgres):
+    import time
+
+    import httpx
+
+    from app import mock
+
+    run_id = seeded()
+    with db.transaction() as session:
+        run = db.get_run(session, run_id)
+        db.save(
+            session,
+            run,
+            {
+                **run.data,
+                "status": "qualified",
+                "done": ["qualify"],
+                "lead": {
+                    "request_id": "concurrent",
+                    "name": "Synthetic",
+                    "email": "synthetic@example.test",
+                    "phone": "",
+                },
+                "qualification": {
+                    "budget": 12500,
+                    "currency": "USD",
+                    "timeline": "unknown",
+                    "request_type": "automation",
+                    "score": 80,
+                    "reason": "Synthetic CRM automation",
+                },
+            },
+            "qualified",
+        )
+    parent, child = CTX.Pipe()
+    server = CTX.Process(target=provider_server, args=(*postgres, child))
+    server.start()
+    assert parent.poll(15)
+    port = parent.recv()
+    try:
+        for _ in range(100):
+            try:
+                if httpx.get(f"http://127.0.0.1:{port}/health", timeout=0.5).is_success:
+                    break
+            except httpx.TransportError:
+                pass
+            time.sleep(0.05)
+        else:
+            pytest.fail("synthetic HTTP provider not ready")
+        ready, results, start = CTX.Queue(), CTX.Queue(), CTX.Event()
+        workers = [
+            CTX.Process(target=crm_worker, args=(*postgres, port, run_id, ready, start, results))
+            for _ in range(2)
+        ]
+        for worker in workers:
+            worker.start()
+        for _ in workers:
+            assert ready.get(timeout=15)
+        start.set()
+        outcomes = [results.get(timeout=15) for _ in workers]
+        for worker in workers:
+            worker.join(15)
+            assert worker.exitcode == 0
+        assert outcomes[0]["deal_id"] == outcomes[1]["deal_id"]
+        assert outcomes[0]["contact_id"] == outcomes[1]["contact_id"]
+        with Session(connect(*postgres)) as session:
+            for kind in ("contacts", "deals", "associations"):
+                assert len(list(session.scalars(select(mock.Object).where(mock.Object.kind == kind)))) == 1
+    finally:
+        server.terminate()  # Own disposable test-only provider process, never a shared service.
+        server.join(15)
+
+
+def test_postgres_retention_preserves_unresolved_and_pending(postgres):
+    safe, active, uncertain, pending = (seeded(char * 64) for char in "abcd")
+    with db.transaction() as session:
+        for identity in (safe, active, uncertain, pending):
+            run = db.get_run(session, identity)
+            data = {**run.data, "status": "completed"}
+            if identity != active:
+                data.pop("qualification_operation")
+            if identity == uncertain:
+                data["offer_mail"] = "uncertain"
+            db.save(session, run, data, "fixture")
+            run.updated_at = datetime.now(UTC) - timedelta(days=8)
+        db.alert(session, pending, "undelivered")
+    assert main.maintenance() == {"purged": 1}
+    with db.transaction() as session:
+        assert set(session.scalars(select(db.Run.id))) == {active, uncertain, pending}

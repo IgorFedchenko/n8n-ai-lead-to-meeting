@@ -22,6 +22,21 @@ jobs:
       - run: bandit -r app evals -q
       - run: python scripts/audit_dependencies.py
       - run: python scripts/scan_secrets.py
+      - name: Security feature availability
+        env:
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          python - <<'PYAVAIL'
+          import json, os
+          from pathlib import Path
+          private = os.environ['REPOSITORY_PRIVATE'] == 'true'
+          report = {'CodeQL': 'SKIPPED_UNAVAILABLE' if private else 'SEPARATE_WORKFLOW',
+                    'native_private_secret_scanning': 'SKIPPED_UNAVAILABLE' if private else 'NOT_VERIFIED',
+                    'reason': 'No paid private entitlement activated', 'free_scans': ['Bandit', 'detect-secrets', 'pip-audit']}
+          Path('artifacts').mkdir(exist_ok=True)
+          Path('artifacts/security-availability.json').write_text(json.dumps(report))
+          print(json.dumps(report))
+          PYAVAIL
       - run: pytest -q -m "not postgres" --junitxml=artifacts/tests.xml
       - run: python -m evals.run --offline --output artifacts/evals.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -32,6 +47,7 @@ jobs:
             artifacts/dependency-audit/
             artifacts/tests.xml
             artifacts/evals.json
+            artifacts/security-availability.json
       - run: python scripts/generate_workflows.py && git diff --exit-code workflows
   postgres:
     runs-on: ubuntu-latest

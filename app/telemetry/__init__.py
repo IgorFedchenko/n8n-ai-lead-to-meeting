@@ -33,6 +33,7 @@ ALLOWED = {
     "model",
     "prompt_version",
     "prompt_hash",
+    "schema_hash",
     "elapsed_ms",
     "input_tokens",
     "output_tokens",

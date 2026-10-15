@@ -53,6 +53,12 @@ def main():
             "Meeting confirmed. Your email confirmation has been sent.",
             timeout=120000,
         )
+        page.locator("#scenario").select_option("invalid")
+        page.get_by_role("button", name="Run workflow", exact=True).click()
+        expect(page.locator("#notice")).to_have_text(
+            "Queued for manual review. Warning recorded.", timeout=120000
+        )
+        page.screenshot(path=str(image_dir / "manual.png"), full_page=True)
         assert not errors, errors
         video = page.video
         context.close()

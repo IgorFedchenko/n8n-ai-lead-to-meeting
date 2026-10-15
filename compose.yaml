@@ -9,6 +9,8 @@ x-n8n-env: &n8n-env
   SERVICE_KEY: ${SERVICE_KEY}
   WEBHOOK_TOKEN: ${WEBHOOK_TOKEN}
   INTEGRATION_MODE: ${INTEGRATION_MODE:-mock}
+  # CLI publication uses the supported startup activation manager.
+  N8N_USE_WORKFLOW_PUBLICATION_SERVICE: "false"
   N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
   N8N_DIAGNOSTICS_ENABLED: "false"
   N8N_VERSION_NOTIFICATIONS_ENABLED: "false"

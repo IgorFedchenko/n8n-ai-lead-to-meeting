@@ -286,3 +286,152 @@ def test_real_secret_scanner_positive_negative_controls(tmp_path):
     assert found.returncode == 1
     assert b"control.txt" in found.stdout
     assert shutil.which("git")
+
+
+def test_conflicting_email_phone_never_creates_a_deal(clients):
+    client, remote = clients
+    adapter = main.providers
+    adapter.contact(lead(email="one@example.test", phone="+12025550101"))
+    adapter.contact(lead(email="two@example.test", phone="+12025550102"))
+    run_id = client.post(
+        "/api/intake", json={"lead": lead(email="one@example.test", phone="+12025550102")}
+    ).json()["run_id"]
+    client.post(f"/api/runs/{run_id}/qualify")
+    assert client.post(f"/api/runs/{run_id}/crm").status_code == 502
+    assert remote.get("/state").json()["deals"] == []
+
+
+def test_booking_other_identity_expired_and_past_slot_guards(clients):
+    client, remote = clients
+    run = pipeline(client)
+    other = pipeline(client, lead(request_id="other-identity", email="other@example.test", phone=""))
+    body = {"run_id": run["run_id"], "token": other["booking_token"], "slot": run["slots"][0]}
+    assert client.post("/api/book", json=body).status_code == 403
+    assert client.post("/api/book", json={**body, "token": ""}).status_code == 422
+    with db.transaction() as session:
+        row = db.get_run(session, run["run_id"])
+        db.save(
+            session,
+            row,
+            {**row.data, "offered_at": (datetime.now(UTC) - timedelta(days=8)).isoformat()},
+            "expired",
+        )
+    assert client.post("/api/book", json={**body, "token": run["booking_token"]}).status_code == 410
+    assert remote.get("/state").json()["events"] == []
+
+
+def test_live_demo_routes_disabled_recipient_page_remains_token_guarded(clients, monkeypatch):
+    client, _ = clients
+    monkeypatch.setattr(main.providers, "mode", "live")
+    assert client.get("/").status_code == 404
+    for method, path in [
+        ("GET", "/demo/state"),
+        ("GET", "/demo/mock"),
+        ("POST", "/demo/lead"),
+        ("POST", "/demo/book"),
+    ]:
+        assert client.request(method, path, json={}).status_code == 404
+    assert client.get("/booking").status_code == 200
+    assert client.get("/public/offer", params={"run_id": "a" * 64}).status_code in {403, 404}
+
+
+def test_notification_outbox_failure_then_success_and_private_provider_body(clients, monkeypatch):
+    client, remote = clients
+    run = pipeline(client, lead(scenario="invalid"))
+    original = main.providers.notify
+    calls = []
+
+    def failed_notify(*args):
+        calls.append(args)
+        raise IntegrationError("PRIVATE_PROVIDER_ERROR_BODY")
+
+    monkeypatch.setattr(main.providers, "notify", failed_notify)
+    client.post("/api/monitor")
+    state = client.get("/api/state").json()
+    assert state["alerts"] and all(not a["delivered"] for a in state["alerts"])
+    assert "PRIVATE_PROVIDER_ERROR_BODY" not in json.dumps(state)
+    monkeypatch.setattr(main.providers, "notify", original)
+    client.post("/api/monitor")
+    assert all(a["delivered"] for a in client.get("/api/state").json()["alerts"])
+    assert calls and remote.get("/state").json()["alerts"]
+    assert run["status"] == "manual_review"
+
+
+@pytest.mark.parametrize("token", [None, "", [], "invalid token with spaces"])
+def test_malformed_oauth_token_fails_without_calendar_request(monkeypatch, respx_mock, token):
+    from app.providers import Providers
+
+    monkeypatch.setenv("INTEGRATION_MODE", "live")
+    for name in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"):
+        monkeypatch.setenv(name, "synthetic-placeholder")
+    route = respx_mock.post("https://oauth2.googleapis.com/token").respond(200, json={"access_token": token})
+    adapter = Providers()
+    try:
+        with pytest.raises(IntegrationError):
+            adapter.free(["2099-01-01T12:00:00+00:00"])
+        assert route.call_count == 1 and len(respx_mock.calls) == 1
+    finally:
+        adapter.client.close()
+
+
+@pytest.mark.parametrize("status,calls", [(400, 1), (401, 1), (429, 3), (503, 3)])
+def test_bounded_retry_permanent_and_transient_http(monkeypatch, respx_mock, status, calls):
+    from app.providers import Providers, Retryable
+
+    monkeypatch.setenv("RETRY_DELAY_SCALE", "0")
+    route = respx_mock.get("https://synthetic.invalid/endpoint").respond(status, json={"error": "PRIVATE"})
+    adapter = Providers()
+    try:
+        if status in {429, 503}:
+            with pytest.raises(Retryable):
+                adapter.request("GET", "https://synthetic.invalid/endpoint")
+        else:
+            with pytest.raises(IntegrationError):
+                adapter.checked(adapter.request("GET", "https://synthetic.invalid/endpoint"))
+        assert route.call_count == calls
+    finally:
+        adapter.client.close()
+
+
+def test_type_checker_negative_control(tmp_path):
+    import subprocess
+    import sys
+
+    invalid = tmp_path / "invalid.py"
+    invalid.write_text("def checked() -> str:\n    return 42\n")
+    result = subprocess.run([sys.executable, "-m", "mypy", str(invalid)], capture_output=True, text=True)
+    assert result.returncode == 1
+    assert "return-value" in result.stdout
+
+
+def test_actual_span_parentage_accounting_metadata_and_all_private_surfaces(clients):
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from app.qualification import PROMPT_HASH, SCHEMA_HASH
+    from app.telemetry import provider
+
+    client, _ = clients
+    exporter = InMemorySpanExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    payload = lead(
+        name="PRIVATE_TRACE_NAME",
+        message="PRIVATE_TRACE_INQUIRY CRM automation",
+        email="trace-private@example.test",
+    )
+    run = pipeline(client, payload)
+    spans = exporter.get_finished_spans()
+    qualification = next(s for s in spans if s.name == "qualification")
+    attempt = next(s for s in spans if s.name == "llm.attempt")
+    root = next(s for s in spans if s.name == "run" and s.context.trace_id == qualification.context.trace_id)
+    assert qualification.parent.span_id == root.context.span_id
+    assert attempt.parent.span_id == qualification.context.span_id
+    accounting = next(s for s in spans if s.name == "llm.accounting")
+    assert accounting.attributes["prompt_hash"] == PROMPT_HASH
+    assert accounting.attributes["schema_hash"] == SCHEMA_HASH
+    assert accounting.attributes["elapsed_ms"] >= 0
+    assert accounting.attributes["attempt"] == 1
+    assert all(s.end_time >= s.start_time for s in spans)
+    serialized = json.dumps([s.to_json() for s in spans])
+    for private in (payload["name"], payload["email"], payload["message"], run["booking_token"]):
+        assert private not in serialized

@@ -115,6 +115,38 @@ def main():
         time.sleep(1)
     else:
         raise AssertionError("Separate n8n Error Trigger workflow did not deliver a warning")
+    # No direct monitor API call: the independently scheduled n8n workflow must find this run.
+    stalled = call(APP, "/api/intake", {"lead": {**fixtures[0], "request_id": PREFIX + "-stalled"}})
+    code = "\n".join(
+        [
+            "from app.db import transaction, get_run",
+            "from datetime import datetime, UTC, timedelta",
+            "with transaction() as s:",
+            f"    get_run(s, {stalled['run_id']!r}).updated_at = datetime.now(UTC) - timedelta(minutes=11)",
+        ]
+    )
+    subprocess.run(["docker", "compose", "exec", "-T", "app", "python", "-c", code], cwd=ROOT, check=True)
+    for _ in range(85):
+        state = call(APP, "/api/state")
+        if any(
+            a["run_id"] == stalled["run_id"] and a["reason"] == "stalled_execution" and a["delivered"]
+            for a in state["alerts"]
+        ):
+            break
+        time.sleep(1)
+    else:
+        raise AssertionError("Independent scheduled n8n monitor did not discover stale run")
+    # Restart actual workers without deleting storage; retained identity and business IDs must survive.
+    subprocess.run(["docker", "compose", "restart", "app", "n8n"], cwd=ROOT, check=True, capture_output=True)
+    subprocess.run(["python3", str(ROOT / "scripts/wait_ready.py")], cwd=ROOT, check=True)
+    replay = call(N8N, "/webhook/lead", fixtures[0], key="webhook")
+    assert replay["deal_id"] == runs[0]["deal_id"] and replay["event_id"] == booked["event_id"]
+    config = json.loads(
+        subprocess.check_output(["docker", "compose", "config", "--format", "json"], cwd=ROOT)
+    )
+    for service in config["services"].values():
+        for binding in service.get("ports", []):
+            assert binding["host_ip"] == "127.0.0.1", "Demo port must bind loopback only"
     mock = call(APP, "/demo/mock")
     ids = {r["run_id"] for r in runs}
     assert len([d for d in mock["deals"] if d["properties"]["portfolio_request_id"] in ids]) == 3
@@ -135,7 +167,10 @@ def main():
             "concurrent redelivery without duplicate CRM records",
             "email + phone identity upsert",
             "Calendar booking replay and confirmation email",
-            "actual IMAP email trigger",
+            "actual RFC-punctuation SMTP to GreenMail to n8n IMAP trigger",
+            "independent scheduled n8n monitor discovers stale run",
+            "actual app/n8n restart preserves retained business IDs",
+            "loopback-only published ports",
             "separate n8n Error Trigger and warning delivery",
         ],
     }
