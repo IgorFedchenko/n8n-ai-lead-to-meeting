@@ -1,9 +1,19 @@
 import json
 
 import httpx
+import pytest
 
 from app.models import Qualification
-from app.providers import Providers
+from app.providers import IntegrationError, Providers
+
+
+def test_mock_ignores_empty_live_credential_but_live_rejects_it(monkeypatch):
+    monkeypatch.setenv("HUBSPOT_ACCESS_TOKEN", "")
+    monkeypatch.setenv("INTEGRATION_MODE", "mock")
+    assert Providers().crm_headers == {"Authorization": "Bearer mock"}
+    monkeypatch.setenv("INTEGRATION_MODE", "live")
+    with pytest.raises(IntegrationError, match="Configure HUBSPOT_ACCESS_TOKEN"):
+        _ = Providers().crm_headers
 
 
 def test_anthropic_live_contract_without_network(monkeypatch, respx_mock):

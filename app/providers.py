@@ -124,7 +124,10 @@ class Providers:
 
     @property
     def crm_headers(self):
-        return {"Authorization": "Bearer " + os.getenv("HUBSPOT_ACCESS_TOKEN", "mock")}
+        token = "mock" if self.mode == "mock" else os.getenv("HUBSPOT_ACCESS_TOKEN", "")
+        if not token.strip():
+            raise IntegrationError("Configure HUBSPOT_ACCESS_TOKEN before using live CRM")
+        return {"Authorization": "Bearer " + token}
 
     def contact(self, lead):
         matches = {}
