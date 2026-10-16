@@ -107,10 +107,11 @@ The SMTP server in these tests is a minimal loopback test server; live TLS/authe
 compatibility remains unverified. A "not delivered" reconciliation fixture preserves uncertainty
 and never authorizes automatic resend; the documented operator command supports verified delivery only.
 
-The local verification driver builds the actual stack, installs Chromium, records `capture_demo.py` before
-bulk acceptance fixtures, runs `verify_demo.py`, converts that current video with FFmpeg, then starts
+The local verification driver builds the actual stack, uses the prerequisite Chromium installation,
+records `capture_demo.py` before bulk acceptance fixtures, runs `verify_demo.py`, then starts
 optional Phoenix and runs
-`verify_phoenix.py`. Default startup does not start Phoenix. Its receipt includes trace/span IDs,
+`verify_phoenix.py`. It retains the existing genuine committed GIF and restores screenshots after
+capture; it does not run FFmpeg or replace public visuals. Default startup does not start Phoenix. Its receipt includes trace/span IDs,
 parent IDs and counts, without raw prompts, completions, headers, contacts or booking URLs.
 Privacy checks cover the actual app/mock/n8n/bootstrap logs, Phoenix data, n8n `execution_data`
 and alert metadata, including malformed intake/schema errors. These execution-data checks cover
