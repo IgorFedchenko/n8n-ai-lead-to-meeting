@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest==9.1.1", "respx==0.22.0", "ruff==0.14.14", "mypy==1.19.1",
+test = ["pytest==9.1.1", "respx==0.22.0", "ruff==0.17.0", "mypy==1.19.1",
         "pip-audit==2.10.1", "bandit==1.9.3", "detect-secrets==1.5.0", "pre-commit==4.5.1"]
 
 [tool.pytest.ini_options]
