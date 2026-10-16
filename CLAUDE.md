@@ -15,10 +15,9 @@ or client code, personal data and credentials. Original code is MIT licensed.
 ## Build and verify
 
 Use Python 3.12+ and Docker Compose. Install `requirements-dev.lock` in `.venv`.
-`./scripts/demo.sh` builds and starts the local demo. `./scripts/verify_local.sh` runs the
-reproducible local verification sequence, including build, browser, PostgreSQL and Phoenix.
-See `docs/VERIFICATION.md` for prerequisites and individual commands. On a shared host, invoke
-heavy commands through its resource queue (the local driver takes separate tickets when the queue is installed).
+`./scripts/demo.sh` builds and starts the local demo. See `docs/VERIFICATION.md` for individual
+verification commands, prerequisites and tested boundaries. On a shared host, invoke each heavy
+Docker/build/browser command through its resource queue, taking a separate ticket per test boundary.
 Generate exports with `.venv/bin/python scripts/generate_workflows.py`; commit generator and exports
 together and verify `git diff --exit-code workflows`.
 

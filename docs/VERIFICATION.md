@@ -2,21 +2,17 @@
 
 Private GitHub Actions is disabled. Do not enable, dispatch or rerun it. The pinned workflow
 files are optional manually invoked public examples; historical hosted receipts do not establish
-final-source CI status. Use the following local command with Python 3.12+, Docker Compose and
-Playwright/Chromium installed in `.venv`
-(`.venv/bin/pip install playwright==1.58.0`, then `.venv/bin/python -m playwright install chromium`):
+final-source CI status. The current local fast checks cover lint/format, types, security scans, 131 fast tests and 14
+synthetic replay cases. The actual n8n/Postgres/GreenMail/browser/Phoenix checks were executed
+successfully on the preceding runtime revision using isolated hosted runners. Subsequent packaging
+changes leave app, build, dependency, workflow and test inputs unchanged; those actual-system receipts
+are reused rather than described as a new local or final-source CI execution. Mac/ARM full-stack
+startup remains unverified.
 
-```sh
-./scripts/verify_local.sh
-```
-
-On shared hosts with `studio-heavy-run` installed, the driver takes a fresh queue ticket for each heavy boundary. It requires unused
-loopback ports 8088, 5679 and 6006, uses a unique Compose project, and removes only its own stack
-and volumes on exit. It refuses an existing `.env`: use a clean checkout with no live credentials.
-It generates synthetic local secrets, runs build and all verification layers, and writes ignored
-`artifacts/` receipts. Browser screenshots are restored after capture; committed images remain the
-existing genuine synthetic recording. Failed required commands stop the driver. No live providers
-or model/judge calls run. Advisory lookups query public package vulnerability data.
+Run each heavy Docker/build/browser operation through the host's resource queue. On hosts with
+`studio-heavy-run`, prefix each individual heavy command with `studio-heavy-run --`; do not wrap
+a series of suites in one ticket. Keep stack namespaces isolated and clean up only owned resources.
+Do not count skipped PostgreSQL tests as acceptance.
 
 # Reproduce verification
 
@@ -54,7 +50,7 @@ python3 scripts/verify_demo.py
 ```
 
 On a host with a shared heavy-job queue, prefix Docker/build/browser commands with its queue wrapper.
-The local driver runs the real stack in an isolated named Compose project. Machine-readable receipts and browser videos
+Historical hosted acceptance ran the real stack in an isolated Compose project. Machine-readable receipts and browser videos
 are uploaded as artifacts; only synthetic screenshots/GIF belong in the source tree.
 Convert a passing current browser recording with `scripts/encode_demo.sh CAPTURE.webm`; on a queued
 host run encoding through the same heavy-job wrapper. Screenshots/recording illustrate the synthetic
@@ -102,16 +98,16 @@ TEST_POSTGRES_URL="$DISPOSABLE_DATABASE_URL" \
 ```
 
 Each database test creates and removes its own schema. The database user must have schema creation
-permission. With no `TEST_POSTGRES_URL`, those tests explicitly skip locally; the local driver always supplies it. A local skip is not evidence of database acceptance.
+permission. With no `TEST_POSTGRES_URL`, those tests explicitly skip locally; the historical dedicated PostgreSQL job supplied it. A local skip is not evidence of database acceptance.
 The SMTP server in these tests is a minimal loopback test server; live TLS/authenticated SMTP
 compatibility remains unverified. A "not delivered" reconciliation fixture preserves uncertainty
 and never authorizes automatic resend; the documented operator command supports verified delivery only.
 
-The local verification driver builds the actual stack, uses the prerequisite Chromium installation,
-records `capture_demo.py` before bulk acceptance fixtures, runs `verify_demo.py`, then starts
-optional Phoenix and runs
-`verify_phoenix.py`. It retains the existing genuine committed GIF and restores screenshots after
-capture; it does not run FFmpeg or replace public visuals. Default startup does not start Phoenix. Its receipt includes trace/span IDs,
+The verified actual-stack sequence built the stack, used Chromium, recorded `capture_demo.py`
+before bulk acceptance fixtures, ran `verify_demo.py`, then started optional Phoenix and ran
+`verify_phoenix.py`. These are separate commands, not a one-command verification driver.
+Default startup does not start Phoenix. The existing genuine committed GIF remains unchanged.
+Its receipt includes trace/span IDs,
 parent IDs and counts, without raw prompts, completions, headers, contacts or booking URLs.
 Privacy checks cover the actual app/mock/n8n/bootstrap logs, Phoenix data, n8n `execution_data`
 and alert metadata, including malformed intake/schema errors. These execution-data checks cover

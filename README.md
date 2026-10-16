@@ -129,12 +129,11 @@ python3 -m venv .venv
 .venv/bin/pytest -q
 ```
 
-Run the complete local build and verification with `./scripts/verify_local.sh` after installing
-the dependencies above, then `.venv/bin/pip install playwright==1.58.0` and
-`.venv/bin/python -m playwright install chromium`. Docker,
-Compose and a free loopback port 6006 are required. The script uses a uniquely named local stack,
-runs fast checks, real PostgreSQL contracts, actual n8n/GreenMail acceptance, Chromium and actual
-application-to-Phoenix ingestion. See [verification](docs/VERIFICATION.md) for receipts and coverage.
+The commands above run local fast checks and synthetic replay. For browser checks install
+`.venv/bin/pip install playwright==1.58.0`, then
+`.venv/bin/python -m playwright install chromium`. Separate actual-stack, PostgreSQL and
+application-to-Phoenix commands and their verified boundaries are in [verification](docs/VERIFICATION.md).
+Run heavy Docker/build/browser commands through the host's resource queue when available.
 
 GitHub Actions is disabled for this private repository; no private runner minutes are used for
 final verification. Pinned workflows remain optional manual examples guarded to public repositories.
