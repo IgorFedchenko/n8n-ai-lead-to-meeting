@@ -3,7 +3,8 @@
 Private GitHub Actions is disabled. Do not enable, dispatch or rerun it. The pinned workflow
 files are optional manually invoked public examples; historical hosted receipts do not establish
 final-source CI status. Use the following local command with Python 3.12+, Docker Compose and
-Chromium installed in `.venv` (`.venv/bin/python -m playwright install chromium`):
+Playwright/Chromium installed in `.venv`
+(`.venv/bin/pip install playwright==1.58.0`, then `.venv/bin/python -m playwright install chromium`):
 
 ```sh
 ./scripts/verify_local.sh

@@ -130,7 +130,8 @@ python3 -m venv .venv
 ```
 
 Run the complete local build and verification with `./scripts/verify_local.sh` after installing
-the dependencies above and Chromium (`.venv/bin/python -m playwright install chromium`). Docker,
+the dependencies above, then `.venv/bin/pip install playwright==1.58.0` and
+`.venv/bin/python -m playwright install chromium`. Docker,
 Compose and a free loopback port 6006 are required. The script uses a uniquely named local stack,
 runs fast checks, real PostgreSQL contracts, actual n8n/GreenMail acceptance, Chromium and actual
 application-to-Phoenix ingestion. See [verification](docs/VERIFICATION.md) for receipts and coverage.
