@@ -1,5 +1,6 @@
 name: Verify reference implementation
-on: [push, pull_request, workflow_dispatch]
+on:
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -7,6 +8,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   test:
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -50,6 +52,7 @@ jobs:
             artifacts/security-availability.json
       - run: python scripts/generate_workflows.py && git diff --exit-code workflows
   postgres:
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -76,6 +79,7 @@ jobs:
           name: postgres-contracts
           path: artifacts/postgres.xml
   acceptance:
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

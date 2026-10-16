@@ -1,3 +1,22 @@
+# Local final verification policy
+
+Private GitHub Actions is disabled. Do not enable, dispatch or rerun it. The pinned workflow
+files are optional manually invoked public examples; historical hosted receipts do not establish
+final-source CI status. Use the following local command with Python 3.12+, Docker Compose and
+Chromium installed in `.venv` (`.venv/bin/python -m playwright install chromium`):
+
+```sh
+./scripts/verify_local.sh
+```
+
+On shared hosts with `studio-heavy-run` installed, the driver takes a fresh queue ticket for each heavy boundary. It requires unused
+loopback ports 8088, 5679 and 6006, uses a unique Compose project, and removes only its own stack
+and volumes on exit. It refuses an existing `.env`: use a clean checkout with no live credentials.
+It generates synthetic local secrets, runs build and all verification layers, and writes ignored
+`artifacts/` receipts. Browser screenshots are restored after capture; committed images remain the
+existing genuine synthetic recording. Failed required commands stop the driver. No live providers
+or model/judge calls run. Advisory lookups query public package vulnerability data.
+
 # Reproduce verification
 
 All default verification is synthetic and free of SaaS/LLM calls. Install `requirements-dev.lock`
@@ -34,7 +53,7 @@ python3 scripts/verify_demo.py
 ```
 
 On a host with a shared heavy-job queue, prefix Docker/build/browser commands with its queue wrapper.
-CI runs the real stack on an isolated hosted runner. Machine-readable receipts and browser videos
+The local driver runs the real stack in an isolated named Compose project. Machine-readable receipts and browser videos
 are uploaded as artifacts; only synthetic screenshots/GIF belong in the source tree.
 Convert a passing current browser recording with `scripts/encode_demo.sh CAPTURE.webm`; on a queued
 host run encoding through the same heavy-job wrapper. Screenshots/recording illustrate the synthetic
@@ -49,7 +68,7 @@ entitlements are unavailable for this reference; Bandit and detect-secrets run w
 
 The pinned free `pip-audit` command checks both complete committed locks against public PyPI
 advisories. It performs advisory lookup only (`--no-deps --disable-pip`); it neither installs nor
-fixes packages. Findings, lookup failures and tool errors fail CI. JSON reports are uploaded under
+fixes packages. Findings, lookup failures and tool errors fail verification. JSON reports are uploaded under
 `dependency-audit/`. A successful audit means no known advisories at the query time, not a guarantee
 that dependencies have no vulnerabilities. No advisories are suppressed.
 
@@ -82,13 +101,12 @@ TEST_POSTGRES_URL="$DISPOSABLE_DATABASE_URL" \
 ```
 
 Each database test creates and removes its own schema. The database user must have schema creation
-permission. With no `TEST_POSTGRES_URL`, those tests explicitly skip locally; the dedicated CI
-`postgres` job always supplies it. A local skip is not evidence of database acceptance.
+permission. With no `TEST_POSTGRES_URL`, those tests explicitly skip locally; the local driver always supplies it. A local skip is not evidence of database acceptance.
 The SMTP server in these tests is a minimal loopback test server; live TLS/authenticated SMTP
 compatibility remains unverified. A "not delivered" reconciliation fixture preserves uncertainty
 and never authorizes automatic resend; the documented operator command supports verified delivery only.
 
-The `acceptance` CI job builds the actual stack, installs Chromium, records `capture_demo.py` before
+The local verification driver builds the actual stack, installs Chromium, records `capture_demo.py` before
 bulk acceptance fixtures, runs `verify_demo.py`, converts that current video with FFmpeg, then starts
 optional Phoenix and runs
 `verify_phoenix.py`. Default startup does not start Phoenix. Its receipt includes trace/span IDs,
@@ -102,5 +120,5 @@ mailbox bodies are intentionally private application data, not telemetry artifac
 `detect-secrets==1.5.0` is the free secret scanner used here. The reviewed baseline allows only exact
 synthetic/public fingerprints, including local CI database fixtures; it does not exclude directories.
 The positive control adds a deliberately nonfunctional credential-shaped value in an isolated Git
-repository and requires a nonzero scan exit, while an ordinary file must pass. CI records native
+repository and requires a nonzero scan exit, while an ordinary file must pass. Historical CI recorded native
 private CodeQL/secret scanning as `SKIPPED_UNAVAILABLE`; free scans still must succeed.

@@ -1,13 +1,11 @@
 name: CodeQL (public repositories only)
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   availability:
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     steps:
       - run: echo 'CodeQL runs only when public. Private paid entitlement is not enabled; Bandit runs in CI.'

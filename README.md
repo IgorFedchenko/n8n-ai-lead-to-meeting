@@ -1,7 +1,5 @@
 # AI Lead Qualification to CRM and Meeting Booking
 
-[![Verify reference implementation](https://github.com/IgorFedchenko/n8n-ai-lead-to-meeting/actions/workflows/ci.yml/badge.svg)](https://github.com/IgorFedchenko/n8n-ai-lead-to-meeting/actions/workflows/ci.yml)
-
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A working **reference implementation** for businesses that receive inquiries through web forms
@@ -15,7 +13,7 @@ synthetic. No employer/client code or data is included.
 
 ![Running synthetic local demo](docs/images/demo.png)
 
-[Watch the synthetic workflow demo](docs/images/demo.gif).
+![Synthetic workflow recording](docs/images/demo.gif)
 
 [Recorded booking](docs/images/booked.png) · [Reproduce verification](docs/VERIFICATION.md)
 
@@ -81,7 +79,7 @@ app/           Transactional state, adapters, synthetic HTTP doubles, demo UI
 fixtures/      Synthetic requests, including repair/manual-review/retry scenarios
 scripts/       Bootstrap, workflow generator and actual-stack acceptance
 tests/         Provider-contract, state, validation, failure and security tests
-docs/          Integration setup, reliability boundaries and portfolio copy
+docs/          Integration setup, architecture and reliability boundaries
 compose.yaml   n8n + Postgres + adapter service + doubles + local IMAP/SMTP
 ```
 
@@ -131,11 +129,15 @@ python3 -m venv .venv
 .venv/bin/pytest -q
 ```
 
-GitHub Actions runs the unit/contract tests, checks generated exports, then starts the actual
-Compose stack and verifies webhooks, Postgres state, IMAP delivery, redelivery, booking, manual
-review, rate limiting and the separate error workflow. A Chromium run checks the form, replay,
-booking and the private recipient link from the captured invitation email. Successful acceptance produces a JSON
-receipt as a CI artifact; it contains identifiers and check names, with no inquiry bodies or secrets.
+Run the complete local build and verification with `./scripts/verify_local.sh` after installing
+the dependencies above and Chromium (`.venv/bin/python -m playwright install chromium`). Docker,
+Compose and a free loopback port 6006 are required. The script uses a uniquely named local stack,
+runs fast checks, real PostgreSQL contracts, actual n8n/GreenMail acceptance, Chromium and actual
+application-to-Phoenix ingestion. See [verification](docs/VERIFICATION.md) for receipts and coverage.
+
+GitHub Actions is disabled for this private repository; no private runner minutes are used for
+final verification. Pinned workflows remain optional manual examples guarded to public repositories.
+Earlier hosted passes are historical evidence, not a claim that final-source CI ran or is green.
 
 ## AI accounting, evaluation and traces
 
@@ -154,10 +156,10 @@ commands are gated by explicit approval, credentials and durable call/cost limit
 metadata only. Default execution makes no telemetry network calls. Prompt text, response text,
 contacts, booking tokens, headers and query strings are excluded from spans and structured events.
 
-CI runs lint/format, mypy, tests, synthetic replay, a locked-dependency vulnerability audit, Bandit and a local secret scanner. Dependabot
+Local verification runs lint/format, mypy, tests, synthetic replay, a locked-dependency vulnerability audit, Bandit and a local secret scanner. Dependabot
 covers Python, Actions and Docker. CodeQL is guarded to public repositories; private paid Code
 Security/native secret-scanning entitlements are not enabled or claimed. See [verification](docs/VERIFICATION.md)
-and [architecture decisions](docs/adr/README.md).
+[architecture](docs/ARCHITECTURE.md) and [architecture decisions](docs/adr/README.md).
 
 ## Boundaries
 

@@ -7,6 +7,5 @@ __pycache__/
 artifacts/
 playwright-report/
 node_modules/
-CLAUDE.md
 .mypy_cache/
 *.db
