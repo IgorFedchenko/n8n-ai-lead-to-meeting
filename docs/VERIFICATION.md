@@ -120,3 +120,7 @@ synthetic/public fingerprints, including local CI database fixtures; it does not
 The positive control adds a deliberately nonfunctional credential-shaped value in an isolated Git
 repository and requires a nonzero scan exit, while an ordinary file must pass. Historical CI recorded native
 private CodeQL/secret scanning as `SKIPPED_UNAVAILABLE`; free scans still must succeed.
+
+The [Dependabot configuration example](examples/dependabot.yml) is inactive outside `.github/`.
+Automatic dependency updates are disabled; enabling the example for a public repository requires
+explicit owner approval. Repository Actions settings alone do not prevent Dependabot jobs.

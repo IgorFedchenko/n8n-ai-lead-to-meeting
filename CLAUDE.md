@@ -31,3 +31,7 @@ checks as passing. Record failures and diagnose before repeating an unchanged fa
 Repository visibility and publication require owner approval. GitHub Actions is disabled while
 private: do not enable, dispatch or rerun workflows; include `[skip ci]` in commits/pushes.
 The pinned workflows are optional manually invoked public examples. Preserve history and attribution.
+
+`docs/examples/dependabot.yml` is an inactive public opt-in example. Do not copy it into
+`.github/` or enable automatic dependency updates without explicit owner approval; Dependabot
+can run its own jobs even when repository Actions is disabled.

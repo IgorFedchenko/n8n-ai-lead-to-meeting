@@ -1,3 +1,5 @@
+# Inactive example only: this path does not configure Dependabot.
+# Public-repository opt-in requires explicit owner approval before copying to .github/dependabot.yml.
 version: 2
 updates:
   - package-ecosystem: pip

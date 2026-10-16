@@ -156,8 +156,10 @@ commands are gated by explicit approval, credentials and durable call/cost limit
 metadata only. Default execution makes no telemetry network calls. Prompt text, response text,
 contacts, booking tokens, headers and query strings are excluded from spans and structured events.
 
-Local verification runs lint/format, mypy, tests, synthetic replay, a locked-dependency vulnerability audit, Bandit and a local secret scanner. Dependabot
-covers Python, Actions and Docker. CodeQL is guarded to public repositories; private paid Code
+Local verification runs lint/format, mypy, tests, synthetic replay, a locked-dependency vulnerability
+audit, Bandit and a local secret scanner. An inactive [Dependabot example](docs/examples/dependabot.yml)
+covers Python, Actions and Docker; there is no active automatic-update configuration. Public opt-in
+requires explicit owner approval. CodeQL is guarded to public repositories; private paid Code
 Security/native secret-scanning entitlements are not enabled or claimed. See [verification](docs/VERIFICATION.md)
 [architecture](docs/ARCHITECTURE.md) and [architecture decisions](docs/adr/README.md).
 
