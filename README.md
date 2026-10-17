@@ -17,6 +17,8 @@ synthetic. No employer/client code or data is included.
 
 [Recorded booking](docs/images/booked.png) · [Reproduce verification](docs/VERIFICATION.md)
 
+## Architecture
+
 ```mermaid
 flowchart LR
     F[Web form / authenticated webhook] --> N[n8n intake workflow]
@@ -46,7 +48,7 @@ flowchart LR
 | Implemented, live-unverified | LLM, HubSpot, Google OAuth/Calendar, SMTP and Telegram adapters. |
 | Optional, off by default | Local Phoenix tracing; paid calls require separate approval. |
 
-## Run it
+## Run locally
 
 Requires Docker with Compose and Python 3.12+. No API keys or SaaS registration required.
 
@@ -126,7 +128,7 @@ OAuth, SMTP and Telegram. The operator supplies credentials on the host. **Do no
 or incur LLM API charges without the owner's approval.** No real credentials or live calls were
 needed to build or verify the reference implementation.
 
-## Tests and CI
+## Verification
 
 ```sh
 python3 -m venv .venv
@@ -172,7 +174,7 @@ requires explicit owner approval. CodeQL is guarded to public repositories; priv
 Security/native secret-scanning entitlements are not enabled or claimed. See [verification](docs/VERIFICATION.md)
 [architecture](docs/ARCHITECTURE.md) and [architecture decisions](docs/adr/README.md).
 
-## Boundaries
+## Limitations
 
 This is a small-volume, single-tenant reference implementation. Live HubSpot/Google/SMTP/LLM
 acceptance requires operator-owned accounts and credentials; the committed automated proof uses
