@@ -53,7 +53,7 @@ flowchart LR
 Requires Docker with Compose and Python 3.12+. No API keys or SaaS registration required.
 
 ```sh
-git clone git@github.com:IgorFedchenko/n8n-ai-lead-to-meeting.git
+git clone https://github.com/IgorFedchenko/n8n-ai-lead-to-meeting.git
 cd n8n-ai-lead-to-meeting
 ./scripts/demo.sh
 ```
