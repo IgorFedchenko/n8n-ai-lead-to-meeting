@@ -74,7 +74,7 @@ The first launch downloads images and installs pinned Python packages. Startup m
 
 ```sh
 # Actual n8n + Postgres + IMAP acceptance, with concurrent replay and negative controls:
-python3 scripts/verify_demo.py
+.venv/bin/python scripts/verify_demo.py
 
 # Stop containers; keep the local database:
 docker compose down
@@ -145,6 +145,11 @@ The commands above run local fast checks and synthetic replay. For browser check
 `.venv/bin/python -m playwright install chromium`. Separate actual-stack, PostgreSQL and
 application-to-Phoenix commands and their verified boundaries are in [verification](docs/VERIFICATION.md).
 Run heavy Docker/build/browser commands through the host's resource queue when available.
+
+Fresh local verification on **2026-10-17, macOS/ARM64**, at source `f6e5ca3` passed 131 fast
+tests, 14 real PostgreSQL tests, 14 synthetic replay cases, Docker startup, the Chromium
+booking journey and real n8n/GreenMail acceptance including IMAP, monitoring and restart.
+No live SaaS or model inference was used. Optional Phoenix retains separate historical evidence.
 
 GitHub Actions remains disabled after publication; no runner minutes are used for
 final verification. Pinned workflows remain optional manual examples guarded to public repositories.

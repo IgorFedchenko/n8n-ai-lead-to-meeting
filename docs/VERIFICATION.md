@@ -1,13 +1,27 @@
 # Local final verification policy
 
-Private GitHub Actions is disabled. Do not enable, dispatch or rerun it. The pinned workflow
-files are optional manually invoked public examples; historical hosted receipts do not establish
-final-source CI status. The current local fast checks cover lint/format, types, security scans, 131 fast tests and 14
-synthetic replay cases. The actual n8n/Postgres/GreenMail/browser/Phoenix checks were executed
-successfully on the preceding runtime revision using isolated hosted runners. Subsequent packaging
-changes leave app, build, dependency, workflow and test inputs unchanged; those actual-system receipts
-are reused rather than described as a new local or final-source CI execution. Mac/ARM full-stack
-startup remains unverified.
+GitHub Actions remains disabled after publication. Do not enable, dispatch or rerun it without
+separate owner authorization. The pinned workflows are optional manual examples; historical hosted
+receipts do not establish final-source CI status.
+
+Fresh local checks on **2026-10-17, macOS/ARM64**, at source
+`f6e5ca3ca8c09bc0ac46b88516b8763d36f5fbe4` passed the following gates. Each heavy command received
+its own host queue ticket. Docker ran in an isolated VM with two CPUs and four GiB of memory.
+
+| Gate | Executed result |
+| --- | --- |
+| Fast contracts | 131 passed; PostgreSQL cases deliberately deselected. |
+| Real PostgreSQL process/wire contracts | 14 passed; fast cases deselected; zero skips. The disposable database was removed. |
+| Offline HTTP replay | 14/14 cases passed against independent synthetic annotations; no model inference. |
+| `scripts/demo.sh` | Docker build, bootstrap and real n8n readiness passed on ARM64. |
+| `scripts/capture_demo.py` | Chromium form, replay, booking, recipient invitation and manual-review journey passed without JavaScript errors. |
+| `scripts/verify_demo.py` | All 13 actual-stack controls passed, including SMTP → GreenMail → n8n IMAP, independent scheduled monitoring and app/n8n restart. |
+
+The original committed media retain their historical provenance; the fresh recording was retained as
+local review evidence. Optional Phoenix ingestion still has separate historical Linux evidence and was
+not rerun in this check. Live SaaS, SMTP TLS/authentication, model quality and manual-editor retention
+remain unverified. Runtime, build, dependency, workflow and test files are unchanged by the documentation
+update recording these results.
 
 Run each heavy Docker/build/browser operation through the host's resource queue. On hosts with
 `studio-heavy-run`, prefix each individual heavy command with `studio-heavy-run --`; do not wrap
@@ -18,6 +32,8 @@ Do not count skipped PostgreSQL tests as acceptance.
 
 All default verification is synthetic and free of SaaS/LLM calls. Install `requirements-dev.lock`
 into a Python 3.12 virtualenv. CI commands are visible in `.github/workflows/ci.yml`.
+Browser capture additionally needs `playwright==1.58.0` in that virtualenv and Chromium installed
+with `.venv/bin/python -m playwright install chromium`, as described in the README.
 
 ```sh
 .venv/bin/ruff check app tests scripts evals
@@ -45,13 +61,14 @@ booking and the recipient link. HubSpot, Calendar, LLM and alert delivery remain
 
 ```sh
 ./scripts/demo.sh
-python scripts/capture_demo.py
-python3 scripts/verify_demo.py
+.venv/bin/python scripts/capture_demo.py
+.venv/bin/python scripts/verify_demo.py
 ```
 
 On a host with a shared heavy-job queue, prefix Docker/build/browser commands with its queue wrapper.
-Historical hosted acceptance ran the real stack in an isolated Compose project. Machine-readable receipts and browser videos
-are uploaded as artifacts; only synthetic screenshots/GIF belong in the source tree.
+Both the fresh local check and historical hosted acceptance used isolated Compose projects. Keep local
+machine-readable receipts and browser videos outside the source tree; only selected synthetic screenshots/GIF
+belong in the source tree. The optional workflow recipe uploads its own artifacts when explicitly enabled.
 Convert a passing current browser recording with `scripts/encode_demo.sh CAPTURE.webm`; on a queued
 host run encoding through the same heavy-job wrapper. Screenshots/recording illustrate the synthetic
 local workflow, not live SaaS certification.
