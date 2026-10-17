@@ -74,7 +74,7 @@ The first launch downloads images and installs pinned Python packages. Startup m
 
 ```sh
 # Actual n8n + Postgres + IMAP acceptance, with concurrent replay and negative controls:
-.venv/bin/python scripts/verify_demo.py
+python3 scripts/verify_demo.py
 
 # Stop containers; keep the local database:
 docker compose down
@@ -144,6 +144,7 @@ The commands above run local fast checks and synthetic replay. For browser check
 `.venv/bin/pip install playwright==1.58.0`, then
 `.venv/bin/python -m playwright install chromium`. Separate actual-stack, PostgreSQL and
 application-to-Phoenix commands and their verified boundaries are in [verification](docs/VERIFICATION.md).
+The standalone `verify_demo.py` uses only Python's standard library; browser capture needs the virtualenv.
 Run heavy Docker/build/browser commands through the host's resource queue when available.
 
 Fresh local verification on **2026-10-17, macOS/ARM64**, at source `f6e5ca3` passed 131 fast
