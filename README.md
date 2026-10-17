@@ -37,6 +37,15 @@ flowchart LR
     P --> T[Telegram warning / local capture]
 ```
 
+## Integration status
+
+| Status | Components |
+| --- | --- |
+| Runs locally | Five n8n workflows, Postgres, adapter service and GreenMail IMAP/SMTP. |
+| Local doubles | LLM completions, HubSpot, Google Calendar and notification delivery. |
+| Implemented, live-unverified | LLM, HubSpot, Google OAuth/Calendar, SMTP and Telegram adapters. |
+| Optional, off by default | Local Phoenix tracing; paid calls require separate approval. |
+
 ## Run it
 
 Requires Docker with Compose and Python 3.12+. No API keys or SaaS registration required.
@@ -135,7 +144,7 @@ The commands above run local fast checks and synthetic replay. For browser check
 application-to-Phoenix commands and their verified boundaries are in [verification](docs/VERIFICATION.md).
 Run heavy Docker/build/browser commands through the host's resource queue when available.
 
-GitHub Actions is disabled for this private repository; no private runner minutes are used for
+GitHub Actions remains disabled after publication; no runner minutes are used for
 final verification. Pinned workflows remain optional manual examples guarded to public repositories.
 Earlier hosted passes are historical evidence, not a claim that final-source CI ran or is green.
 
